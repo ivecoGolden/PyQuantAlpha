@@ -2,7 +2,8 @@
 """K 线数据相关端点"""
 
 from typing import List, Optional
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Depends
+from functools import lru_cache
 
 from src.data import BinanceClient
 from src.messages import ErrorMessage
@@ -10,15 +11,18 @@ from src.messages import ErrorMessage
 
 router = APIRouter()
 
-# 创建客户端实例
-_client = BinanceClient(timeout=30)
+@lru_cache()
+def get_binance_client() -> BinanceClient:
+    """获取 Binance 客户端实例 (依赖注入)"""
+    return BinanceClient()
 
 
 @router.get("/klines")
 async def get_klines(
     symbol: str = Query(..., description="交易对，如 BTCUSDT"),
     interval: str = Query("1h", description="时间周期，如 1m, 1h, 1d"),
-    limit: int = Query(100, ge=1, le=1000, description="返回数量，最大 1000")
+    limit: int = Query(100, ge=1, le=1000, description="返回数量，最大 1000"),
+    client: BinanceClient = Depends(get_binance_client)
 ) -> List[dict]:
     """获取 K 线数据
     
@@ -33,7 +37,7 @@ async def get_klines(
         K 线数据列表
     """
     try:
-        bars = _client.get_klines(symbol, interval, limit=limit)
+        bars = client.get_klines(symbol, interval, limit=limit)
         return [
             {
                 "timestamp": bar.timestamp,
@@ -59,7 +63,8 @@ async def get_klines(
 async def get_historical_klines(
     symbol: str = Query(..., description="交易对，如 BTCUSDT"),
     interval: str = Query("1h", description="时间周期"),
-    days: int = Query(7, ge=1, le=365, description="获取最近 N 天的数据")
+    days: int = Query(7, ge=1, le=365, description="获取最近 N 天的数据"),
+    client: BinanceClient = Depends(get_binance_client)
 ) -> List[dict]:
     """获取历史 K 线数据
     
@@ -74,7 +79,7 @@ async def get_historical_klines(
         K 线数据列表
     """
     try:
-        bars = _client.get_historical_klines(symbol, interval, days=days)
+        bars = client.get_historical_klines(symbol, interval, days=days)
         return [
             {
                 "timestamp": bar.timestamp,

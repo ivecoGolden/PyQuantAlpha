@@ -52,13 +52,18 @@ class BinanceClient(BaseExchangeClient):
     """
     
     BASE_URL = "https://api.binance.com/api/v3"
-    DEFAULT_TIMEOUT = 10  # 秒
-    MAX_RETRIES = 3       # 最大重试次数
-    RETRY_DELAY = 1.0     # 基础重试延迟（秒）
+    BASE_URL = "https://api.binance.com/api/v3"
     
-    def __init__(self, timeout: int = DEFAULT_TIMEOUT) -> None:
-        """初始化客户端"""
-        self._timeout = timeout
+    def __init__(self, timeout: Optional[int] = None) -> None:
+        """初始化客户端
+        
+        Args:
+            timeout: 超时时间，默认从配置读取
+        """
+        from src.config.settings import settings
+        self._timeout = timeout or settings.BINANCE_TIMEOUT
+        self._max_retries = settings.BINANCE_MAX_RETRIES
+        self._retry_delay = settings.BINANCE_RETRY_DELAY
         # 链式调用状态
         self._symbol: Optional[str] = None
         self._interval: Optional[str] = None
@@ -131,14 +136,14 @@ class BinanceClient(BaseExchangeClient):
         self,
         url: str,
         params: dict,
-        max_retries: int = MAX_RETRIES
+        max_retries: Optional[int] = None
     ) -> requests.Response:
         """发送请求并处理频率限制（自动重试）
         
         Args:
             url: 请求 URL
             params: 请求参数
-            max_retries: 最大重试次数
+            max_retries: 最大重试次数，默认从配置读取
             
         Returns:
             响应对象
@@ -150,13 +155,16 @@ class BinanceClient(BaseExchangeClient):
         """
         last_error: Optional[Exception] = None
         
+        if max_retries is None:
+            max_retries = self._max_retries
+            
         for attempt in range(max_retries):
             try:
                 response = requests.get(url, params=params, timeout=self._timeout)
                 
                 # 处理频率限制 (429)
                 if response.status_code == 429:
-                    retry_after = int(response.headers.get("Retry-After", self.RETRY_DELAY))
+                    retry_after = int(response.headers.get("Retry-After", self._retry_delay))
                     if attempt < max_retries - 1:
                         time.sleep(retry_after)
                         continue
@@ -177,7 +185,7 @@ class BinanceClient(BaseExchangeClient):
                     ErrorMessage.TIMEOUT.exchange(ExchangeType.BINANCE).build(timeout=self._timeout)
                 )
                 if attempt < max_retries - 1:
-                    time.sleep(self.RETRY_DELAY * (attempt + 1))
+                    time.sleep(self._retry_delay * (attempt + 1))
                     continue
                 raise last_error
                 
@@ -186,7 +194,7 @@ class BinanceClient(BaseExchangeClient):
                     ErrorMessage.NETWORK_ERROR.exchange(ExchangeType.BINANCE).build(error=str(e))
                 )
                 if attempt < max_retries - 1:
-                    time.sleep(self.RETRY_DELAY * (attempt + 1))
+                    time.sleep(self._retry_delay * (attempt + 1))
                     continue
                 raise last_error
         

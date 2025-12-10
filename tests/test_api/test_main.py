@@ -1,14 +1,52 @@
+
 # tests/test_api/test_main.py
 """API 端点测试"""
 
 import pytest
+from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
-
 from src.api.main import app
+from src.api.routes.klines import get_binance_client
+from src.api.routes.strategy import get_llm_dependency
+from src.data import Bar
 
+# 创建 Mock 客户端
+mock_client = MagicMock()
+mock_llm_client = MagicMock()
+
+def override_get_binance_client():
+    return mock_client
+
+def override_get_llm_dependency():
+    return mock_llm_client
+
+# 覆盖依赖
+app.dependency_overrides[get_binance_client] = override_get_binance_client
+app.dependency_overrides[get_llm_dependency] = override_get_llm_dependency
 
 client = TestClient(app)
 
+@pytest.fixture(autouse=True)
+def reset_mock():
+    """每个测试前重置 Mock"""
+    mock_client.reset_mock()
+    mock_llm_client.reset_mock()
+    
+    # 设置默认返回值: Binance
+    mock_client.get_klines.return_value = [
+        Bar(timestamp=1600000000000, open=100.0, high=110.0, low=90.0, close=105.0, volume=1000.0)
+        for _ in range(5)
+    ]
+    mock_client.get_historical_klines.return_value = [
+         Bar(timestamp=1600000000000, open=100.0, high=110.0, low=90.0, close=105.0, volume=1000.0)
+    ]
+    
+    # 设置默认返回值: LLM
+    mock_llm_client.generate_strategy.return_value = '''
+class Strategy:
+    def init(self): pass
+    def on_bar(self, bar): pass
+'''
 
 class TestHealthEndpoint:
     """健康检查端点测试"""
@@ -37,9 +75,15 @@ class TestKlinesEndpoint:
     
     def test_klines_invalid_symbol(self):
         """测试无效交易对返回 400"""
+        # 模拟抛出异常
+        mock_client.get_klines.side_effect = ValueError("无效的交易对")
+        
         response = client.get("/api/klines?symbol=INVALID_XYZ&limit=1")
         assert response.status_code == 400
         assert "无效的交易对" in response.json()["detail"]
+        
+        # 恢复 side_effect
+        mock_client.get_klines.side_effect = None
     
     def test_klines_returns_data(self):
         """测试返回正确的 K 线数据"""
@@ -51,10 +95,13 @@ class TestKlinesEndpoint:
         assert "timestamp" in data[0]
         assert "open" in data[0]
         assert "close" in data[0]
+        
+        # 验证调用了客户端
+        mock_client.get_klines.assert_called_with("BTCUSDT", "1h", limit=5)
     
     def test_klines_limit_validation(self):
         """测试 limit 参数验证"""
-        # 超出上限
+        # 超出上限 (FastAPI 校验，不进入客户端)
         response = client.get("/api/klines?symbol=BTCUSDT&limit=2000")
         assert response.status_code == 422
 
@@ -73,6 +120,9 @@ class TestHistoricalKlinesEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert len(data) >= 1
+        
+        # 验证调用了客户端
+        mock_client.get_historical_klines.assert_called_with("BTCUSDT", "4h", days=1)
 
 
 class TestGenerateEndpoint:
@@ -131,4 +181,3 @@ class Strategy:
             "symbol": "BTCUSDT"
         })
         assert response.status_code == 400
-

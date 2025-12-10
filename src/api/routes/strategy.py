@@ -2,7 +2,7 @@
 """策略相关端点"""
 
 import os
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
 from src.ai import LLMProvider, create_llm_client, validate_strategy_code
@@ -31,6 +31,11 @@ def get_llm_client():
         except ValueError:
             return None
     return _llm_client
+
+
+async def get_llm_dependency():
+    """FastAPI 依赖项"""
+    return get_llm_client()
 
 
 # ============ 请求/响应模型 ============
@@ -93,15 +98,16 @@ MOCK_STRATEGY_CODE = '''class Strategy:
 # ============ 端点实现 ============
 
 @router.post("/generate", response_model=GenerateResponse)
-async def generate_strategy(req: GenerateRequest) -> GenerateResponse:
+async def generate_strategy(
+    req: GenerateRequest,
+    client = Depends(get_llm_dependency)
+) -> GenerateResponse:
     """AI 生成策略代码
     
     使用 DeepSeek AI 根据自然语言描述生成 Python 策略代码。
     
     若未配置 DEEPSEEK_API_KEY，将返回 Mock 策略代码。
     """
-    client = get_llm_client()
-    
     # 如果没有配置 API Key，使用 Mock
     if client is None:
         return GenerateResponse(

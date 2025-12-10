@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from dotenv import load_dotenv
 from src.api.routes import health, klines, strategy
+from src.core.logging import setup_logging, logger
+from src.config.settings import settings
 
 # 加载环境变量
 load_dotenv()
@@ -13,16 +15,17 @@ load_dotenv()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    print("🚀 PyQuantAlpha API 启动成功")
-    print("📖 文档地址: http://localhost:8000/docs")
+    setup_logging()
+    logger.info("🚀 PyQuantAlpha API 启动成功")
+    logger.info(f"📖 文档地址: http://localhost:8000/docs")
     yield
-    print("👋 PyQuantAlpha API 已关闭")
+    logger.info("👋 PyQuantAlpha API 已关闭")
 
 
 app = FastAPI(
-    title="PyQuantAlpha API",
-    description="AI 量化策略平台 API - 支持策略生成与回测",
-    version="0.1.0",
+    title=settings.API_TITLE,
+    description=settings.API_DESCRIPTION,
+    version=settings.API_VERSION,
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan
