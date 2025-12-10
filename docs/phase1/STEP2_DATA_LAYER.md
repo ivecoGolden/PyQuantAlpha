@@ -169,10 +169,10 @@ class TestBinanceClient:
 ## 8. 待实现功能
 
 - [x] `get_klines()` - 基础 K 线获取
-- [ ] `get_historical_klines()` - 批量历史数据
-- [ ] 请求频率限制
+- [x] `get_historical_klines()` - 批量历史数据
+- [x] 请求频率限制 (429/418 处理 + 自动重试)
 - [ ] 数据缓存（可选）
-- [ ] 错误消息常量（见下文）
+- [x] 错误消息常量（见下文）
 
 ---
 

@@ -1,0 +1,16 @@
+# PyQuantAlpha 开发依赖
+# 安装方式: pip install -r requirements-dev.txt
+
+# === 核心依赖 (Python 3.13 兼容) ===
+fastapi>=0.124.0
+uvicorn>=0.38.0
+openai>=1.68.0
+requests>=2.32.5
+streamlit>=1.52.0
+plotly>=6.5.0
+pandas>=2.3.0
+numpy>=2.3.0
+python-dotenv>=1.2.0
+
+# === 测试 ===
+pytest>=9.0.0

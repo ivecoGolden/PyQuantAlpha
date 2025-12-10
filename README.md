@@ -28,7 +28,7 @@ conda create -n pyquantalpha python=3.13 -y
 conda activate pyquantalpha
 
 # 安装依赖
-pip install fastapi uvicorn openai requests streamlit plotly pandas numpy python-dotenv pytest
+pip install -r requirements-dev.txt
 
 # 配置环境变量
 cp .env.example .env
