@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyQuantAlpha 策略生成实验室</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Highlight.js for syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+
+        .markdown-body pre {
+            background-color: #0d1117;
+            padding: 1em;
+            border-radius: 6px;
+            overflow-x: auto;
+        }
+
+        .markdown-body code {
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+        }
+
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 3px solid #3b82f6;
+            width: 20px;
+            height: 20px;
+            -webkit-animation: spin 1s linear infinite;
+            /* Safari */
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 text-gray-900 min-h-screen p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-8 flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 mb-2">🤖 PyQuantAlpha 策略生成实验室</h1>
+                <p class="text-gray-600">输入您的策略想法，AI 将自动编写 Python 代码。</p>
+            </div>
+            <div id="api-status" class="px-3 py-1 rounded-full text-sm font-medium bg-gray-200 text-gray-600">
+                检查 API 连接...
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Left Column: Input -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-fit">
+                <label for="prompt" class="block text-sm font-medium text-gray-700 mb-2">策略描述</label>
+                <textarea id="prompt" rows="12"
+                    class="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none mb-4"
+                    placeholder="例如：创建双均线策略，当 20 日均线上穿 60 日均线时买入，下穿时卖出。止损设置 5%..."></textarea>
+
+                <button id="generate-btn" onclick="generateStrategy()"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+                    <span id="btn-text">🚀 生成策略代码</span>
+                </button>
+            </div>
+
+            <!-- Right Column: Output -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 min-h-[500px]">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold text-gray-900">生成结果</h2>
+                    <button id="copy-btn" onclick="copyCode()"
+                        class="hidden text-sm text-blue-600 hover:text-blue-800 font-medium">
+                        复制多代码
+                    </button>
+                </div>
+
+                <div id="result-area" class="prose prose-sm max-w-none markdown-body text-gray-700">
+                    <div class="flex flex-col items-center justify-center h-64 text-gray-400">
+                        <svg class="w-12 h-12 mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                        </svg>
+                        <p>生成的代码将显示在这里</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+
+        // 检查 API 状态
+        checkHealth();
+
+        async function checkHealth() {
+            const statusEl = document.getElementById('api-status');
+            try {
+                // Health check is at /health (root level router)
+                const response = await fetch(`${API_BASE}/health`);
+                if (response.ok) {
+                    statusEl.textContent = 'API 连接正常 🟢';
+                    statusEl.className = 'px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800';
+                } else {
+                    throw new Error('API Error');
+                }
+            } catch (e) {
+                statusEl.textContent = 'API 连接失败 🔴';
+                statusEl.className = 'px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800';
+            }
+        }
+
+        async function generateStrategy() {
+            const prompt = document.getElementById('prompt').value.trim();
+            const btn = document.getElementById('generate-btn');
+            const btnText = document.getElementById('btn-text');
+            const resultArea = document.getElementById('result-area');
+            const copyBtn = document.getElementById('copy-btn');
+
+            if (!prompt) {
+                alert('请输入策略描述');
+                return;
+            }
+
+            // Loading state
+            btn.disabled = true;
+            btnText.innerHTML = '<span class="loader"></span> AI 正在思考...';
+            resultArea.innerHTML = '<div class="animate-pulse space-y-4"><div class="h-4 bg-gray-200 rounded w-3/4"></div><div class="h-4 bg-gray-200 rounded"></div><div class="h-4 bg-gray-200 rounded"></div><div class="h-64 bg-gray-100 rounded"></div></div>';
+            copyBtn.classList.add('hidden');
+
+            try {
+                // Generate endpoint is at /api/generate
+                const response = await fetch(`${API_BASE}/api/generate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ prompt: prompt })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // 渲染 Markdown
+                    // 我们把 Python 代码包装在 ```python ... ``` 中以确保 markdown 渲染正确，
+                    // 虽然 API 可能只返回代码，但为了保险我们处理一下
+                    let content = data.code;
+                    if (!content.startsWith('```')) {
+                        content = '```python\n' + content + '\n```';
+                    }
+
+                    if (!data.is_valid) {
+                        content = `> [!WARNING]\n> ${data.message}\n\n` + content;
+                    } else {
+                        content = `> [!NOTE]\n> ${data.message}\n\n` + content;
+                    }
+
+                    resultArea.innerHTML = marked.parse(content);
+
+                    // 高亮代码
+                    document.querySelectorAll('pre code').forEach((block) => {
+                        hljs.highlightElement(block);
+                    });
+
+                    copyBtn.classList.remove('hidden');
+                    window.generatedCode = data.code; // 保存以供复制 state
+
+                } else {
+                    resultArea.innerHTML = `<div class="p-4 rounded-lg bg-red-50 text-red-700">
+                        <h4 class="font-bold mb-2">生成失败</h4>
+                        <p>${data.detail || '未知错误'}</p>
+                    </div>`;
+                }
+            } catch (e) {
+                resultArea.innerHTML = `<div class="p-4 rounded-lg bg-red-50 text-red-700">
+                    <h4 class="font-bold mb-2">网络错误</h4>
+                    <p>${e.message}</p>
+                    <p class="text-sm mt-2">请确保后端服务已启动: uvicorn src.api.main:app --reload --cors</p>
+                </div>`;
+            } finally {
+                btn.disabled = false;
+                btnText.textContent = '🚀 生成策略代码';
+            }
+        }
+
+        function copyCode() {
+            if (window.generatedCode) {
+                navigator.clipboard.writeText(window.generatedCode).then(() => {
+                    const originalText = document.getElementById('copy-btn').textContent;
+                    document.getElementById('copy-btn').textContent = '已复制!';
+                    setTimeout(() => {
+                        document.getElementById('copy-btn').textContent = originalText;
+                    }, 2000);
+                });
+            }
+        }
+    </script>
+</body>
+
+</html>
