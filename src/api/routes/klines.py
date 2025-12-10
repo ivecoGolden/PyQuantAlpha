@@ -1,10 +1,12 @@
 # src/api/routes/klines.py
-"""K 线数据端点"""
+"""K 线数据相关端点"""
 
+from typing import List, Optional
 from fastapi import APIRouter, Query, HTTPException
-from typing import List
 
 from src.data import BinanceClient
+from src.messages import ErrorMessage
+
 
 router = APIRouter()
 
@@ -50,7 +52,7 @@ async def get_klines(
     except ConnectionError as e:
         raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"内部错误: {str(e)}")
+        raise HTTPException(status_code=500, detail=ErrorMessage.HTTP_INTERNAL_ERROR.format(error=str(e)))
 
 
 @router.get("/klines/historical")
@@ -87,4 +89,4 @@ async def get_historical_klines(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"内部错误: {str(e)}")
+        raise HTTPException(status_code=500, detail=ErrorMessage.HTTP_INTERNAL_ERROR.format(error=str(e)))

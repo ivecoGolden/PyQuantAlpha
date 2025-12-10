@@ -1,11 +1,36 @@
 # src/api/routes/strategy.py
-"""策略相关端点 (Mock 占位)"""
+"""策略相关端点"""
 
-from fastapi import APIRouter
+import os
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+
+from src.ai import LLMProvider, create_llm_client, validate_strategy_code
+from src.messages import ErrorMessage
 
 
 router = APIRouter()
+
+# LLM 客户端（延迟初始化）
+_llm_client = None
+
+
+def get_llm_client():
+    """获取 LLM 客户端（延迟初始化）"""
+    global _llm_client
+    if _llm_client is None:
+        api_key = os.getenv("DEEPSEEK_API_KEY")
+        if not api_key:
+            return None  # 没有 API Key，使用 Mock
+        
+        # 使用工厂方法创建客户端，便于切换模型
+        provider_str = os.getenv("LLM_PROVIDER", "deepseek").lower()
+        try:
+            provider = LLMProvider(provider_str)
+            _llm_client = create_llm_client(provider, api_key=api_key)
+        except ValueError:
+            return None
+    return _llm_client
 
 
 # ============ 请求/响应模型 ============
@@ -19,6 +44,7 @@ class GenerateResponse(BaseModel):
     """策略生成响应"""
     code: str = Field(..., description="生成的策略代码")
     message: str = Field(..., description="状态消息")
+    is_valid: bool = Field(True, description="代码是否通过校验")
 
 
 class BacktestRequest(BaseModel):
@@ -38,19 +64,10 @@ class BacktestResponse(BaseModel):
     total_trades: int = Field(..., description="总交易次数")
 
 
-# ============ 端点实现 ============
+# ============ Mock 策略代码 ============
 
-@router.post("/generate", response_model=GenerateResponse)
-async def generate_strategy(req: GenerateRequest) -> GenerateResponse:
-    """AI 生成策略代码
-    
-    使用 DeepSeek AI 根据自然语言描述生成 Python 策略代码。
-    
-    **注意**: 当前为 Mock 实现，待 Step 4 完成后替换为真实 AI 生成。
-    """
-    # Mock 实现
-    mock_code = '''class Strategy:
-    """AI 生成的策略 (Mock)"""
+MOCK_STRATEGY_CODE = '''class Strategy:
+    """AI 生成的策略"""
     
     def init(self):
         self.ema20 = EMA(20)
@@ -71,10 +88,49 @@ async def generate_strategy(req: GenerateRequest) -> GenerateResponse:
         
         self.prev_fast = fast
 '''
-    return GenerateResponse(
-        code=mock_code,
-        message="[Mock] 策略生成功能待 Step 4 实现"
-    )
+
+
+# ============ 端点实现 ============
+
+@router.post("/generate", response_model=GenerateResponse)
+async def generate_strategy(req: GenerateRequest) -> GenerateResponse:
+    """AI 生成策略代码
+    
+    使用 DeepSeek AI 根据自然语言描述生成 Python 策略代码。
+    
+    若未配置 DEEPSEEK_API_KEY，将返回 Mock 策略代码。
+    """
+    client = get_llm_client()
+    
+    # 如果没有配置 API Key，使用 Mock
+    if client is None:
+        return GenerateResponse(
+            code=MOCK_STRATEGY_CODE,
+            message="[Mock] 未配置 DEEPSEEK_API_KEY，返回示例策略",
+            is_valid=True
+        )
+    
+    # 调用 AI 生成策略
+    try:
+        code = client.generate_strategy(req.prompt)
+        
+        # 验证生成的代码
+        is_valid, validation_msg = validate_strategy_code(code)
+        
+        if is_valid:
+            return GenerateResponse(
+                code=code,
+                message="策略生成成功",
+                is_valid=True
+            )
+        else:
+            return GenerateResponse(
+                code=code,
+                message=ErrorMessage.STRATEGY_INVALID.format(msg=validation_msg),
+                is_valid=False
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=ErrorMessage.HTTP_AI_GENERATE_FAILED.format(error=str(e)))
 
 
 @router.post("/backtest", response_model=BacktestResponse)
@@ -85,6 +141,11 @@ async def run_backtest(req: BacktestRequest) -> BacktestResponse:
     
     **注意**: 当前为 Mock 实现，待 Step 6-7 完成后替换为真实回测。
     """
+    # 先验证代码
+    is_valid, validation_msg = validate_strategy_code(req.code)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=ErrorMessage.STRATEGY_INVALID.format(msg=validation_msg))
+    
     # Mock 实现
     return BacktestResponse(
         total_return=0.152,
@@ -93,3 +154,4 @@ async def run_backtest(req: BacktestRequest) -> BacktestResponse:
         win_rate=0.58,
         total_trades=42
     )
+

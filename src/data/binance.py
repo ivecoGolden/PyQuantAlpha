@@ -113,9 +113,9 @@ class BinanceClient(BaseExchangeClient):
             ValueError: 未设置 symbol 或 interval
         """
         if not self._symbol:
-            raise ValueError("必须先调用 .symbol() 设置交易对")
+            raise ValueError(ErrorMessage.CHAIN_MISSING_SYMBOL)
         if not self._interval:
-            raise ValueError("必须先调用 .interval() 设置时间周期")
+            raise ValueError(ErrorMessage.CHAIN_MISSING_INTERVAL)
         
         return self.get_klines(
             symbol=self._symbol,
@@ -167,7 +167,7 @@ class BinanceClient(BaseExchangeClient):
                 # 处理 IP 封禁 (418)
                 if response.status_code == 418:
                     raise RuntimeError(
-                        f"{ExchangeType.BINANCE.value}: IP 已被封禁，请稍后重试"
+                        ErrorMessage.IP_BANNED.exchange(ExchangeType.BINANCE).build()
                     )
                 
                 return response
@@ -191,7 +191,7 @@ class BinanceClient(BaseExchangeClient):
                 raise last_error
         
         # 不应该到达这里
-        raise RuntimeError("超过最大重试次数")
+        raise RuntimeError(ErrorMessage.MAX_RETRIES_EXCEEDED)
     
     def get_klines(
         self,
@@ -282,7 +282,7 @@ class BinanceClient(BaseExchangeClient):
             >>> print(f"获取 {len(bars)} 根 K 线")
         """
         if interval not in INTERVAL_MS:
-            raise ValueError(f"无效的时间周期: {interval}")
+            raise ValueError(ErrorMessage.INVALID_INTERVAL.format(interval=interval))
         
         interval_ms = INTERVAL_MS[interval]
         now_ms = int(time.time() * 1000)

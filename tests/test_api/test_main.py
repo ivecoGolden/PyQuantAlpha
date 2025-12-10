@@ -97,8 +97,17 @@ class TestBacktestEndpoint:
     
     def test_backtest_returns_result(self):
         """测试返回回测结果"""
+        # 使用有效的策略代码（通过校验）
+        valid_code = '''
+class Strategy:
+    def init(self):
+        self.value = 0
+    
+    def on_bar(self, bar):
+        self.value += 1
+'''
         response = client.post("/api/backtest", json={
-            "code": "class Strategy: pass",
+            "code": valid_code,
             "symbol": "BTCUSDT",
             "interval": "1h",
             "days": 30
@@ -114,3 +123,12 @@ class TestBacktestEndpoint:
         """测试 code 参数必填"""
         response = client.post("/api/backtest", json={})
         assert response.status_code == 422
+    
+    def test_backtest_invalid_code_returns_400(self):
+        """测试无效代码返回 400"""
+        response = client.post("/api/backtest", json={
+            "code": "invalid code",
+            "symbol": "BTCUSDT"
+        })
+        assert response.status_code == 400
+

@@ -585,13 +585,16 @@ pip install fastapi uvicorn openai requests streamlit plotly pandas numpy python
 5. ✅ 启动服务，验证 Swagger 文档
 6. ✅ 单元测试 (12 个)
 
-### Step 4: AI 策略生成
+### Step 4: AI 策略生成 ✅
 
-1. 封装 DeepSeek API
-2. 设计 Prompt 模板
-3. 实现代码校验 (validator.py)
-4. 完善 `/api/generate` 端点
-5. 测试多种策略描述
+1. ✅ 创建 `BaseLLMClient` 抽象基类
+2. ✅ 封装 DeepSeek API
+3. ✅ 预留 OpenAI 客户端
+4. ✅ 实现工厂方法 + `LLMProvider` 枚举
+5. ✅ 设计 Prompt 模板
+6. ✅ 实现代码校验 (validator.py)
+7. ✅ 更新 `/api/generate` 端点
+8. ✅ 单元测试 (14 个)
 
 ### Step 5: 指标库
 
