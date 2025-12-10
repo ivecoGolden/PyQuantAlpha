@@ -554,7 +554,7 @@ if "result" in st.session_state:
 
 ## 4. 实施步骤
 
-### Step 1: 项目初始化
+### Step 1: 项目初始化 ✅
 
 ```bash
 # 创建项目结构
@@ -569,45 +569,56 @@ conda activate pyquantalpha
 pip install fastapi uvicorn openai requests streamlit plotly pandas numpy python-dotenv pytest
 ```
 
-### Step 2: 数据层
+### Step 2: 数据层 ✅
 
-1. 实现 `BinanceClient`
-2. 测试 K 线数据获取
-3. 实现数据缓存（可选）
+1. ✅ 实现 `BinanceClient` + 链式语法
+2. ✅ 实现 `get_historical_klines()` 批量历史数据
+3. ✅ 实现请求频率限制 (429/418 处理)
+4. ✅ 完整单元测试 (55 个)
 
-### Step 3: 指标库
+### Step 3: API 骨架 ✅
+
+1. ✅ 创建 FastAPI 应用
+2. ✅ 实现健康检查端点 `/health`
+3. ✅ 实现占位端点 `/api/generate`, `/api/backtest`
+4. ✅ 实现 K 线数据端点 `/api/klines` (调用 BinanceClient)
+5. ✅ 启动服务，验证 Swagger 文档
+6. ✅ 单元测试 (12 个)
+
+### Step 4: AI 策略生成
+
+1. 封装 DeepSeek API
+2. 设计 Prompt 模板
+3. 实现代码校验 (validator.py)
+4. 完善 `/api/generate` 端点
+5. 测试多种策略描述
+
+### Step 5: 指标库
 
 1. 实现 EMA, SMA
 2. 实现 RSI, MACD
 3. 单元测试
 
-### Step 4: 回测引擎
+### Step 6: 回测引擎
 
 1. 实现 Order, Position 数据结构
 2. 实现 BacktestEngine 核心循环
 3. 实现绩效分析（收益率、回撤、夏普）
 4. 单元测试
 
-### Step 5: AI 策略生成
+### Step 7: 端点完善
 
-1. 封装 DeepSeek API
-2. 设计 Prompt 模板
-3. 实现代码校验
-4. 测试多种策略描述
+1. 完善 `/api/backtest` (集成回测引擎)
+2. 动态执行 AI 生成的策略代码
+3. 错误处理与响应格式化
 
-### Step 6: API 服务
-
-1. 实现 `/api/generate`
-2. 实现 `/api/backtest`
-3. 错误处理
-
-### Step 7: 前端
+### Step 8: 前端
 
 1. 实现 Streamlit 页面
 2. 对接 API
 3. 结果可视化
 
-### Step 8: 测试
+### Step 9: 集成测试
 
 ```bash
 # 运行所有测试
@@ -621,9 +632,10 @@ pytest tests/test_indicators/
 ```
 tests/
 ├── test_data/test_binance.py      # 数据层测试
-├── test_indicators/test_ma.py    # 指标测试
-├── test_backtest/test_engine.py  # 回测引擎测试
-└── test_ai/test_validator.py     # 代码校验测试
+├── test_api/test_main.py          # API 测试
+├── test_ai/test_validator.py      # 代码校验测试
+├── test_indicators/test_ma.py     # 指标测试
+└── test_backtest/test_engine.py   # 回测引擎测试
 ```
 
 ---
