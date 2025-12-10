@@ -1,0 +1,6 @@
+# src/messages/__init__.py
+"""消息模块 - 统一管理错误消息、日志消息等"""
+
+from src.messages.errorMessage import ErrorMessage, ExchangeType
+
+__all__ = ["ErrorMessage", "ExchangeType"]

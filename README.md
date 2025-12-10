@@ -1,66 +1,77 @@
 # PyQuantAlpha
 
-一个基于 Python 的量化交易策略研究与回测框架。
+> AI 驱动的量化交易策略生成与执行平台
 
-## 📖 项目简介
+## 项目概述
 
-PyQuantAlpha 是一个专注于量化投资策略开发的开源项目，旨在提供一套完整的量化交易解决方案，包括数据获取、因子分析、策略回测和绩效评估等功能。
+PyQuantAlpha 是一个基于 AI 的量化交易平台，支持：
 
-## ✨ 主要功能
+- 🧠 **自然语言策略生成** - 用自然语言描述交易策略，AI 自动生成代码
+- 📊 **回测引擎** - 自研回测系统，支持 Binance 历史数据
+- 🖥️ **可视化界面** - Streamlit 前端展示回测结果
 
-- **数据管理**: 支持多种数据源的接入与管理
-- **因子研究**: 提供因子计算、分析和评估工具
-- **策略回测**: 高效的事件驱动回测引擎
-- **风险管理**: 完善的风险控制与仓位管理
-- **绩效分析**: 详细的策略绩效统计与可视化
+## 技术栈
 
-## 🛠️ 技术栈
+| 模块 | 技术 |
+|------|------|
+| AI 模型 | DeepSeek |
+| 数据源 | Binance API |
+| 后端 | FastAPI |
+| 前端 | Streamlit |
+| 回测 | 自研引擎 |
 
-- Python 3.8+
-- NumPy / Pandas - 数据处理
-- Matplotlib / Plotly - 数据可视化
-- TA-Lib - 技术指标计算
-
-## 📦 安装
+## 快速开始
 
 ```bash
-git clone https://github.com/yourusername/PyQuantAlpha.git
-cd PyQuantAlpha
-pip install -r requirements.txt
+# 创建环境
+conda create -n pyquantalpha python=3.13 -y
+conda activate pyquantalpha
+
+# 安装依赖
+pip install fastapi uvicorn openai requests streamlit plotly pandas numpy python-dotenv pytest
+
+# 配置环境变量
+cp .env.example .env
+# 编辑 .env 填入 DEEPSEEK_API_KEY
 ```
 
-## 🚀 快速开始
-
-```python
-# 示例代码
-from pyquantalpha import Strategy, Backtest
-
-# 创建策略
-strategy = Strategy()
-
-# 运行回测
-result = Backtest(strategy).run()
-
-# 查看结果
-result.summary()
-```
-
-## 📁 项目结构
+## 项目结构
 
 ```
 PyQuantAlpha/
-├── data/           # 数据存储
-├── strategies/     # 策略实现
-├── backtest/       # 回测引擎
-├── analysis/       # 分析工具
-├── utils/          # 工具函数
-└── tests/          # 单元测试
+├── docs/                    # 项目文档
+│   ├── ARCHITECTURE.md      # 系统架构
+│   ├── FEASIBILITY_REPORT.md
+│   └── phase1/              # 第一阶段开发文档
+├── src/                     # 源代码
+│   ├── api/                 # API 服务
+│   ├── ai/                  # AI 策略生成
+│   ├── backtest/            # 回测引擎
+│   ├── data/                # 数据层
+│   └── indicators/          # 技术指标
+├── frontend/                # 前端
+├── tests/                   # 测试
+└── requirements.txt
 ```
 
-## 📄 许可证
+## 文档
 
-本项目采用 MIT 许可证。
+- [系统架构](docs/ARCHITECTURE.md)
+- [可行性报告](docs/FEASIBILITY_REPORT.md)
+- [开发规范](docs/CONTRIBUTING.md)
+- [Phase 1 实施计划](docs/phase1/IMPLEMENTATION_PLAN.md)
 
-## 📧 联系方式
+## 开发进度
 
-如有问题或建议，欢迎提交 Issue 或 Pull Request。
+- [x] 项目规划
+- [x] 环境配置
+- [ ] 数据层开发
+- [ ] 指标库开发
+- [ ] 回测引擎开发
+- [ ] AI 策略生成
+- [ ] API 服务
+- [ ] 前端开发
+
+## License
+
+MIT

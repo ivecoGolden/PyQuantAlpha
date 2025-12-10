@@ -1,0 +1,135 @@
+# tests/test_messages/test_errorMessage.py
+"""ErrorMessage 单元测试"""
+
+import pytest
+from src.messages.errorMessage import ErrorMessage, ExchangeType, MessageBuilder
+
+
+class TestExchangeType:
+    """ExchangeType 枚举测试"""
+    
+    def test_binance_value(self):
+        """测试 Binance 枚举值"""
+        assert ExchangeType.BINANCE.value == "BinanceClient"
+    
+    def test_okx_value(self):
+        """测试 OKX 枚举值"""
+        assert ExchangeType.OKX.value == "OKXClient"
+    
+    def test_bybit_value(self):
+        """测试 Bybit 枚举值"""
+        assert ExchangeType.BYBIT.value == "BybitClient"
+    
+    def test_all_exchanges_have_client_suffix(self):
+        """测试所有交易所枚举值都以 Client 结尾"""
+        for exchange in ExchangeType:
+            assert exchange.value.endswith("Client")
+
+
+class TestMessageBuilder:
+    """MessageBuilder 构建器测试"""
+    
+    def test_build_with_params(self):
+        """测试带参数的消息构建"""
+        builder = MessageBuilder("无效的交易对。symbol={symbol}")
+        result = builder.exchange(ExchangeType.BINANCE).build(symbol="XXX")
+        assert result == "BinanceClient: 无效的交易对。symbol=XXX"
+    
+    def test_build_without_params(self):
+        """测试无参数的消息构建"""
+        builder = MessageBuilder("返回数据为空")
+        result = builder.exchange(ExchangeType.OKX).build()
+        assert result == "OKXClient: 返回数据为空"
+    
+    def test_build_without_exchange_raises_error(self):
+        """测试未设置交易所时抛出异常"""
+        builder = MessageBuilder("测试消息")
+        with pytest.raises(ValueError, match="必须先调用 .exchange()"):
+            builder.build()
+    
+    def test_chain_returns_self(self):
+        """测试链式调用返回 self"""
+        builder = MessageBuilder("测试")
+        result = builder.exchange(ExchangeType.BINANCE)
+        assert result is builder
+    
+    def test_str_with_exchange(self):
+        """测试 __str__ 方法（已设置交易所）"""
+        builder = MessageBuilder("返回数据为空")
+        builder.exchange(ExchangeType.BYBIT)
+        assert str(builder) == "BybitClient: 返回数据为空"
+    
+    def test_str_without_exchange(self):
+        """测试 __str__ 方法（未设置交易所）"""
+        builder = MessageBuilder("返回数据为空")
+        assert str(builder) == "返回数据为空"
+
+
+class TestErrorMessage:
+    """ErrorMessage 类测试"""
+    
+    # ============ 链式语法测试 ============
+    
+    def test_invalid_symbol_chain(self):
+        """测试 INVALID_SYMBOL 链式调用"""
+        result = ErrorMessage.INVALID_SYMBOL.exchange(ExchangeType.BINANCE).build(symbol="INVALID")
+        assert result == "BinanceClient: 无效的交易对。symbol=INVALID"
+    
+    def test_api_failed_chain(self):
+        """测试 API_FAILED 链式调用"""
+        result = ErrorMessage.API_FAILED.exchange(ExchangeType.OKX).build(status=500)
+        assert result == "OKXClient: API 请求失败。status=500"
+    
+    def test_empty_data_chain(self):
+        """测试 EMPTY_DATA 链式调用（无参数）"""
+        result = str(ErrorMessage.EMPTY_DATA.exchange(ExchangeType.BYBIT))
+        assert result == "BybitClient: 返回数据为空"
+    
+    def test_network_error_chain(self):
+        """测试 NETWORK_ERROR 链式调用"""
+        result = ErrorMessage.NETWORK_ERROR.exchange(ExchangeType.HUOBI).build(error="Connection refused")
+        assert result == "HuobiClient: 网络连接失败。error=Connection refused"
+    
+    def test_timeout_chain(self):
+        """测试 TIMEOUT 链式调用"""
+        result = ErrorMessage.TIMEOUT.exchange(ExchangeType.GATE).build(timeout=30)
+        assert result == "GateClient: 请求超时。timeout=30s"
+    
+    # ============ format 静态方法测试 ============
+    
+    def test_format_with_message_builder(self):
+        """测试 format 方法接受 MessageBuilder"""
+        result = ErrorMessage.format(ErrorMessage.INVALID_SYMBOL, ExchangeType.BINANCE, symbol="TEST")
+        assert result == "BinanceClient: 无效的交易对。symbol=TEST"
+    
+    def test_format_with_string(self):
+        """测试 format 方法接受字符串"""
+        result = ErrorMessage.format("自定义错误：{msg}", ExchangeType.OKX, msg="测试")
+        assert result == "OKXClient: 自定义错误：测试"
+    
+    def test_format_no_params(self):
+        """测试 format 方法无参数模板"""
+        result = ErrorMessage.format(ErrorMessage.EMPTY_DATA, ExchangeType.BYBIT)
+        assert result == "BybitClient: 返回数据为空"
+    
+    # ============ 边界情况测试 ============
+    
+    def test_missing_format_param_raises_error(self):
+        """测试缺少格式化参数时抛出 KeyError"""
+        with pytest.raises(KeyError):
+            ErrorMessage.INVALID_SYMBOL.exchange(ExchangeType.BINANCE).build()
+    
+    def test_all_error_messages_are_message_builder(self):
+        """测试所有错误消息都是 MessageBuilder 类型"""
+        error_attrs = [
+            ErrorMessage.INVALID_SYMBOL,
+            ErrorMessage.API_FAILED,
+            ErrorMessage.EMPTY_DATA,
+            ErrorMessage.RATE_LIMITED,
+            ErrorMessage.NETWORK_ERROR,
+            ErrorMessage.TIMEOUT,
+            ErrorMessage.PARSE_ERROR,
+            ErrorMessage.INVALID_RESPONSE,
+        ]
+        for attr in error_attrs:
+            assert isinstance(attr, MessageBuilder)
