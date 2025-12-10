@@ -3,7 +3,11 @@
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from dotenv import load_dotenv
 from src.api.routes import health, klines, strategy
+
+# 加载环境变量
+load_dotenv()
 
 
 @asynccontextmanager
