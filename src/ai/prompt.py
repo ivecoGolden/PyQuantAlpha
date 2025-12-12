@@ -25,12 +25,42 @@ class Strategy:
             self.close("BTCUSDT")
 ```
 
-## 可用指标
+## 可用指标（内置库）
 
-- `EMA(period)`: 指数移动平均
 - `SMA(period)`: 简单移动平均
-- `RSI(period)`: 相对强弱指标
-- `MACD(fast, slow, signal)`: MACD 指标
+- `EMA(period)`: 指数移动平均
+- `RSI(period)`: 相对强弱指标（默认14）
+- `MACD(fast, slow, signal)`: MACD 指标（默认12, 26, 9）
+- `ATR(period)`: 平均真实波幅（默认14）
+- `BollingerBands(period, std)`: 布林带（默认20, 2）
+
+## 自定义指标
+
+你可以定义自己的指标类，例如：
+
+```python
+class SuperTrend:
+    def __init__(self, period=10, multiplier=3.0):
+        self.atr = ATR(period)
+        self.multiplier = multiplier
+        self.trend = 0
+    
+    def update(self, high, low, close):
+        atr_val = self.atr.update(high, low, close)
+        if atr_val is None:
+            return 0
+        # 计算逻辑...
+        return self.trend
+
+class Strategy:
+    def init(self):
+        self.st = SuperTrend(10, 3)
+    
+    def on_bar(self, bar):
+        trend = self.st.update(bar.high, bar.low, bar.close)
+        if trend == 1:
+            self.order("BTCUSDT", "BUY", 0.1)
+```
 
 ## 可用方法
 
@@ -53,7 +83,7 @@ bar 对象包含:
 ## 重要规则
 
 1. 只输出策略类代码，不要解释
-2. 类名必须是 Strategy
+2. 类名必须是 Strategy（可以定义其他辅助类）
 3. 必须实现 init() 和 on_bar() 方法
 4. 不要使用 import 语句
 5. 不要使用 exec/eval 等危险函数
@@ -67,4 +97,6 @@ ADVANCED_PROMPT = SYSTEM_PROMPT + """
 - 可以使用 self.equity 获取当前资金
 - 可以记录历史变量进行趋势判断
 - 支持多条件组合判断
+- 可以定义多个自定义指标类
 """
+

@@ -596,11 +596,99 @@ pip install fastapi uvicorn openai requests streamlit plotly pandas numpy python
 7. ✅ 更新 `/api/generate` 端点
 8. ✅ 单元测试 (14 个)
 
-### Step 5: 指标库
+### Step 5: 指标库 + 自定义指标支持（方案 B） ✅
 
-1. 实现 EMA, SMA
-2. 实现 RSI, MACD
-3. 单元测试
+> **设计决策**：采用「基础库 + 允许自定义」模式，既提供高效的内置指标，又允许 AI 生成任意自定义逻辑。
+
+#### 5.1 基础指标库 (`src/indicators/`) ✅
+
+创建一套高效、经过优化的基础指标供 AI 和回测引擎使用：
+
+| 指标 | 类名 | 说明 |
+|------|------|------|
+| 简单移动平均 | `SMA(period)` | 基础趋势指标 |
+| 指数移动平均 | `EMA(period)` | 平滑趋势指标 |
+| 相对强弱指标 | `RSI(period)` | 超买超卖判断 |
+| MACD | `MACD(fast, slow, signal)` | 趋势动量指标 |
+| ATR | `ATR(period)` | 波动率指标 |
+| 布林带 | `BollingerBands(period, std)` | 通道指标 |
+
+**文件结构**：
+```
+src/indicators/
+├── __init__.py      # 导出所有指标
+├── base.py          # 指标基类
+├── ma.py            # SMA, EMA
+├── oscillator.py    # RSI, MACD
+└── volatility.py    # ATR, BollingerBands
+```
+
+#### 5.2 动态白名单校验器 ✅
+
+修改 `src/ai/validator.py`，支持识别代码中定义的类/函数名：
+
+```python
+def validate_strategy_code(code: str) -> Tuple[bool, str]:
+    tree = ast.parse(code)
+    
+    # 1. 收集代码中定义的名称
+    defined_names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            defined_names.add(node.name)
+        elif isinstance(node, ast.FunctionDef):
+            defined_names.add(node.name)
+    
+    # 2. 合并到允许列表
+    allowed = ALLOWED_NAMES | ALLOWED_BUILTINS | defined_names
+    
+    # 3. 使用扩展后的白名单进行校验
+    ...
+```
+
+#### 5.3 更新 Prompt 模板 ✅
+
+在 `src/ai/prompt.py` 中明确告知 AI 可以自定义指标：
+
+```markdown
+## 可用指标（内置库）
+- `EMA(period)`, `SMA(period)`, `RSI(period)`, `MACD(fast, slow, signal)`, `ATR(period)`
+
+## 自定义指标
+你可以定义自己的指标类，例如：
+
+```python
+class SuperTrend:
+    def __init__(self, period, multiplier):
+        self.atr = ATR(period)  # 可以使用内置指标
+        self.multiplier = multiplier
+        self.upper = None
+        self.lower = None
+    
+    def update(self, bar):
+        atr_value = self.atr.update(bar.high, bar.low, bar.close)
+        # ... 计算逻辑
+        return trend_direction
+```
+
+然后在 Strategy 中使用：
+```python
+class Strategy:
+    def init(self):
+        self.st = SuperTrend(10, 3)
+```
+```
+
+#### 5.4 实施步骤 ✅
+
+1. ✅ 创建 `src/indicators/base.py` - 指标基类
+2. ✅ 实现 `SMA`, `EMA` (`src/indicators/ma.py`)
+3. ✅ 实现 `RSI`, `MACD` (`src/indicators/oscillator.py`)
+4. ✅ 实现 `ATR`, `BollingerBands` (`src/indicators/volatility.py`)
+5. ✅ 修改 `validator.py` 支持动态白名单
+6. ✅ 更新 `prompt.py` 添加自定义指标示例
+7. ✅ 单元测试（指标计算准确性）
+
 
 ### Step 6: 回测引擎
 

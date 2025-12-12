@@ -15,10 +15,14 @@ ALLOWED_BUILTINS = {
     'print', 'sum', 'sorted', 'enumerate', 'zip'
 }
 
-# 允许的自定义名称
+# 允许的自定义名称（内置指标 + 策略接口）
 ALLOWED_NAMES = {
     'Strategy', 'self', 'bar',
-    'EMA', 'SMA', 'RSI', 'MACD',
+    # 内置指标
+    'EMA', 'SMA', 'RSI', 'MACD', 'ATR', 'BollingerBands',
+    # 指标结果类
+    'MACDResult', 'BollingerResult',
+    # 策略接口
     'order', 'close', 'get_position', 'equity'
 }
 
@@ -41,6 +45,27 @@ FORBIDDEN_CALLS = {
     'getattr', 'setattr', 'delattr', 'hasattr',
     'exit', 'quit', 'breakpoint'
 }
+
+
+def _collect_defined_names(tree: ast.Module) -> set:
+    """收集代码中定义的类名和函数名
+    
+    支持 AI 自定义指标类，不受白名单限制。
+    
+    Args:
+        tree: AST 语法树
+        
+    Returns:
+        代码中定义的名称集合
+    """
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            names.add(node.name)
+        elif isinstance(node, ast.FunctionDef):
+            names.add(node.name)
+    return names
+
 
 
 def validate_strategy_code(code: str) -> Tuple[bool, str]:
@@ -66,17 +91,21 @@ def validate_strategy_code(code: str) -> Tuple[bool, str]:
     except SyntaxError as e:
         return False, ErrorMessage.STRATEGY_SYNTAX_ERROR.format(msg=e.msg, line=e.lineno)
     
-    # 2. 检查是否有且只有一个 Strategy 类
-    classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
-    if len(classes) == 0:
-        return False, ErrorMessage.STRATEGY_CLASS_NOT_FOUND
-    if len(classes) > 1:
-        return False, ErrorMessage.STRATEGY_ONLY_ONE_CLASS
-    if classes[0].name != "Strategy":
-        return False, ErrorMessage.STRATEGY_WRONG_CLASS_NAME.format(name=classes[0].name)
+    # 2. 收集代码中定义的名称（支持自定义指标类）
+    defined_names = _collect_defined_names(tree)
     
-    # 3. 检查必要方法
-    strategy_class = classes[0]
+    # 3. 检查是否存在 Strategy 类
+    classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
+    strategy_classes = [c for c in classes if c.name == "Strategy"]
+    
+    if len(strategy_classes) == 0:
+        return False, ErrorMessage.STRATEGY_CLASS_NOT_FOUND
+    if len(strategy_classes) > 1:
+        return False, ErrorMessage.STRATEGY_ONLY_ONE_CLASS
+    
+    strategy_class = strategy_classes[0]
+    
+    # 4. 检查必要方法
     methods = {node.name for node in strategy_class.body if isinstance(node, ast.FunctionDef)}
     if "init" not in methods:
         return False, ErrorMessage.STRATEGY_MISSING_INIT

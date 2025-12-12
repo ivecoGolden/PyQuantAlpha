@@ -46,19 +46,38 @@ class MyStrategy:
         assert not is_valid
         assert "Strategy" in msg
     
-    def test_multiple_classes(self):
-        """测试多个类定义"""
+    def test_multiple_classes_allowed(self):
+        """测试允许自定义指标类（方案 B 支持）"""
+        code = '''
+class SuperTrend:
+    """自定义指标"""
+    def __init__(self):
+        pass
+
+class Strategy:
+    def init(self):
+        self.st = SuperTrend()
+    def on_bar(self, bar):
+        pass
+'''
+        is_valid, msg = validate_strategy_code(code)
+        assert is_valid
+        assert msg == "验证通过"
+    
+    def test_multiple_strategy_classes_not_allowed(self):
+        """测试不允许多个 Strategy 类"""
         code = '''
 class Strategy:
     def init(self): pass
     def on_bar(self, bar): pass
 
-class Helper:
-    pass
+class Strategy:
+    def init(self): pass
+    def on_bar(self, bar): pass
 '''
         is_valid, msg = validate_strategy_code(code)
         assert not is_valid
-        assert "只能定义一个类" in msg
+        assert "只能定义一个" in msg
     
     def test_missing_init(self):
         """测试缺少 init 方法"""
