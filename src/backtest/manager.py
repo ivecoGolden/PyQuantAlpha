@@ -122,12 +122,16 @@ class BacktestManager:
             
             loop = asyncio.get_running_loop()
             
-            def thread_safe_progress(c, t, e):
+            def thread_safe_progress(c, t, e, ts):
                 loop.call_soon_threadsafe(
                     queue.put_nowait,
                     {
                         "type": "progress",
-                        "data": {"progress": int(c/t*100), "equity": e}
+                        "data": {
+                            "progress": int(c/t*100), 
+                            "equity": e,
+                            "timestamp": ts
+                        }
                     }
                 )
             
@@ -147,7 +151,7 @@ class BacktestManager:
                     "total_return": result.total_return,
                     "max_drawdown": result.max_drawdown,
                     "sharpe_ratio": result.sharpe_ratio,
-                    "equity_curve": result.equity_curve, # 可能很大，注意
+                    "equity_curve": result.equity_curve, 
                     "trades": [
                         {
                             "symbol": t.symbol,

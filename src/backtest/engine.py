@@ -61,14 +61,14 @@ class BacktestEngine:
         self,
         strategy_code: str,
         data: List[Bar],
-        on_progress: Optional[Callable[[int, int, float], None]] = None
+        on_progress: Optional[Callable[[int, int, float, int], None]] = None
     ) -> BacktestResult:
         """运行回测
         
         Args:
             strategy_code: 策略代码字符串
             data: K 线数据列表
-            on_progress: 进度回调 (current_index, total_length, equity)
+            on_progress: 进度回调 (current_index, total_length, equity, timestamp)
             
         Returns:
             BacktestResult 回测结果
@@ -111,16 +111,16 @@ class BacktestEngine:
             })
             
             # 如果有回调，上报进度
-            # 注意：高频回测可能影响性能，可以加一个 sampling check，比如每 1% 或每 100 根 BAR 更新
             if on_progress:
-                on_progress(i + 1, total_bars, equity)
+                on_progress(i + 1, total_bars, equity, bar.timestamp)
             
             # 3.3 执行策略 on_bar
             try:
                 self._strategy.on_bar(bar)
             except Exception as e:
                 logger.error(ErrorMessage.BACKTEST_STRATEGY_ERROR.format(error=e))
-                # 继续回测，不中断
+        
+        # 继续回测，不中断
         
         # 4. 分析结果
         return BacktestAnalyzer.analyze(

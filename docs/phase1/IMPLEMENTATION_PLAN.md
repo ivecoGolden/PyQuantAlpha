@@ -709,26 +709,23 @@ class Strategy:
    - 实现 `POST /api/backtest/run` 启动回测
    - 实现 `GET /api/backtest/stream` (SSE) 推送实时进度和净值更新
 
-### Step 8: 前端 (Simple HTML)
+### Step 8: 前端 (Simple HTML) ✅
 
-1. [ ] **单页应用 (`index.html`)**:
+1. ✅ **单页应用 (`index.html`)**:
    - 聊天输入框 (与 AI 交互)
    - 策略展示区 (代码高亮 + 策略解读)
    - 控制面板 (运行回测按钮)
    - 结果展示区 (实时进度条 + 净值曲线图)
-2. [ ] **交互逻辑 (Vanilla JS)**:
+2. ✅ **交互逻辑 (Vanilla JS)**:
    - `fetch` 调用生成接口
-   - `EventSource` 监听回测进度
+   - `SSE` 监听回测进度
    - Chart.js 绘制简易图表
 
-### Step 9: 集成测试
+### Step 9: 集成测试 (`docs/phase1/STEP9_INTEGRATION_TESTING.md`) ✅
 
 ```bash
-# 运行所有测试
-pytest
-
-# 运行指定模块
-pytest tests/test_indicators/
+# 运行集成测试
+pytest tests/test_integration/
 ```
 
 测试文件结构：
@@ -738,7 +735,9 @@ tests/
 ├── test_api/test_main.py          # API 测试
 ├── test_ai/test_validator.py      # 代码校验测试
 ├── test_indicators/test_ma.py     # 指标测试
-└── test_backtest/test_engine.py   # 回测引擎测试
+├── test_backtest/test_engine.py   # 回测引擎测试
+└── test_integration/              # [新增] 集成测试
+    └── test_full_flow.py          # 完整流程测试
 ```
 
 ---

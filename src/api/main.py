@@ -42,6 +42,22 @@ app.add_middleware(
 )
 
 # 注册路由
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+
+# ... existing imports ...
+
+# 注册路由
 app.include_router(health.router, tags=["健康检查"])
 app.include_router(klines.router, prefix="/api", tags=["数据"])
 app.include_router(strategy.router, prefix="/api", tags=["策略"])
+
+from fastapi.responses import FileResponse
+
+# 挂载静态文件
+static_dir = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+@app.get("/")
+async def read_index():
+    return FileResponse(static_dir / "index.html")

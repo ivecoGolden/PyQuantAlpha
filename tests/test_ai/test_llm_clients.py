@@ -126,11 +126,12 @@ class Strategy:
         mock_openai.return_value = mock_client
         
         client = DeepSeekClient(api_key="test_key")
-        result = client.generate_strategy("EMA 金叉做多")
+        code, explanation = client.generate_strategy("EMA 金叉做多")
         
-        assert "class Strategy" in result
-        assert "def init" in result
-        assert "def on_bar" in result
+        assert "class Strategy" in code
+        assert "def init" in code
+        assert "def on_bar" in code
+        assert isinstance(explanation, str)
     
     @patch('src.ai.deepseek.OpenAI')
     def test_generate_strategy_api_error(self, mock_openai):
@@ -192,10 +193,11 @@ class Strategy:
         mock_openai.return_value = mock_client
         
         client = OpenAIClient(api_key="test_key")
-        result = client.generate_strategy("RSI 超卖反弹")
+        code, explanation = client.generate_strategy("RSI 超卖反弹")
         
-        assert "class Strategy" in result
-        assert "RSI" in result
+        assert "class Strategy" in code
+        assert "RSI" in code
+        assert isinstance(explanation, str)
     
     @patch('src.ai.openai_client.OpenAI')
     def test_generate_strategy_api_error(self, mock_openai):

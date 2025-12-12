@@ -166,6 +166,22 @@ def execute_strategy_code(code: str) -> object:
     }
     safe_locals = {}
     
+    # 注入指标类
+    try:
+        from src.indicators.ma import SMA, EMA
+        from src.indicators.oscillator import RSI, MACD
+        from src.indicators.volatility import ATR, BollingerBands
+        
+        indicators = {
+            'SMA': SMA, 'EMA': EMA,
+            'RSI': RSI, 'MACD': MACD,
+            'ATR': ATR, 'BollingerBands': BollingerBands
+        }
+        safe_globals.update(indicators)
+    except ImportError as e:
+        # 如果回测引擎还没就绪，可能会失败，但在集成测试环境应该有了
+        pass
+
     try:
         exec(code, safe_globals, safe_locals)
         strategy_class = safe_locals.get('Strategy')
