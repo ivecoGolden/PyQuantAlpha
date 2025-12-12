@@ -690,18 +690,18 @@ class Strategy:
 7. ✅ 单元测试（指标计算准确性）
 
 
-### Step 6: 回测引擎
+### **Step 6**: 回测引擎 (`docs/phase1/STEP6_BACKTEST_ENGINE.md`) ✅
+1. ✅ 实现 Order, Position 数据结构 (`src/backtest/models.py`)
+2. ✅ 实现 BacktestEngine 核心循环 (`src/backtest/engine.py`)
+3. ✅ 实现绩效分析 (`src/backtest/analyzer.py`)
+4. ✅ 单元测试 (`tests/test_backtest/` 219 passed)
 
-1. 实现 Order, Position 数据结构
-2. 实现 BacktestEngine 核心循环
-3. 实现绩效分析（收益率、回撤、夏普）
-4. 单元测试
+### Step 7: 端点完善 (当前阶段)
 
-### Step 7: 端点完善
-
-1. 完善 `/api/backtest` (集成回测引擎)
-2. 动态执行 AI 生成的策略代码
-3. 错误处理与响应格式化
+1. [ ] 完善 `/api/backtest` (集成 `BacktestEngine`)
+2. [ ] 更新 `BacktestRequest` 模型支持回测参数
+3. [ ] 增加错误处理 (`ErrorMessage`)
+4. [ ] 编写 API 集成测试
 
 ### Step 8: 前端
 

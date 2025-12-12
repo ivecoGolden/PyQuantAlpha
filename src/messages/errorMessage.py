@@ -137,6 +137,14 @@ class ErrorMessage:
     STRATEGY_EXECUTE_FAILED: Final[str] = "策略代码执行失败: {error}"
     STRATEGY_INVALID: Final[str] = "策略代码无效: {msg}"
     
+    # ============ 回测相关 ============
+    BACKTEST_DATA_EMPTY: Final[str] = "回测数据为空"
+    BACKTEST_STRATEGY_INIT_FAILED: Final[str] = "策略初始化失败: {error}"
+    BACKTEST_STRATEGY_ERROR: Final[str] = "策略执行异常: {error}"
+    BACKTEST_INSUFFICIENT_FUNDS: Final[str] = "资金不足"
+    BACKTEST_INSUFFICIENT_POSITION: Final[str] = "持仓不足"
+    BACKTEST_ORDER_REJECTED: Final[str] = "订单 {order_id} 拒绝: {reason}"
+    
     # ============ HTTP 相关 ============
     HTTP_INTERNAL_ERROR: Final[str] = "内部错误: {error}"
     HTTP_AI_GENERATE_FAILED: Final[str] = "AI 生成失败: {error}"
