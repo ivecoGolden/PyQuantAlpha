@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from src.ai import LLMProvider, create_llm_client, validate_strategy_code
+from src.ai import LLMProvider, create_llm_client, validate_strategy_code, STRATEGY_KEYWORDS
 from src.messages import ErrorMessage
 from src.data.binance import BinanceClient
 from src.backtest.manager import BacktestManager
@@ -43,6 +43,16 @@ async def get_llm_dependency():
 
 # ============ 请求/响应模型 ============
 
+class ChatRequest(BaseModel):
+    message: str = Field(..., description="用户消息")
+
+class ChatResponse(BaseModel):
+    type: str = Field(..., description="响应类型：chat 或 strategy")
+    content: str = Field(..., description="聊天回复或策略代码")
+    explanation: str = Field("", description="策略解读（仅 type=strategy）")
+    is_valid: bool = Field(True, description="策略是否通过校验（仅 type=strategy）")
+    message: str = Field("", description="状态消息")
+
 class GenerateRequest(BaseModel):
     prompt: str = Field(..., description="用自然语言描述策略")
 
@@ -72,7 +82,73 @@ MOCK_STRATEGY_CODE = '''class Strategy:
             self.order("BTCUSDT", "BUY", 0.1)
 '''
 
+MOCK_CHAT_RESPONSE = "你好！我是 PyQuantAlpha 的 AI 助手。你可以告诉我你想要的交易策略，比如「写一个双均线策略」。"
+
+# ============ 辅助函数 ============
+
+def is_strategy_request(message: str) -> bool:
+    """判断是否为策略生成请求"""
+    message_lower = message.lower()
+    return any(kw.lower() in message_lower for kw in STRATEGY_KEYWORDS)
+
 # ============ 端点 ============
+
+@router.post("/chat", response_model=ChatResponse)
+async def chat(
+    req: ChatRequest,
+    client = Depends(get_llm_dependency)
+) -> ChatResponse:
+    """智能聊天端点
+    
+    自动识别用户意图：
+    - 普通聊天：直接返回 AI 回复
+    - 策略生成：生成策略代码并校验
+    """
+    message = req.message.strip()
+    
+    # 判断意图
+    if is_strategy_request(message):
+        # 策略生成模式
+        if client is None:
+            return ChatResponse(
+                type="strategy",
+                content=MOCK_STRATEGY_CODE,
+                explanation="# Mock 解读\n未配置 API Key。",
+                is_valid=True,
+                message="[Mock] 返回示例策略"
+            )
+        
+        try:
+            code, explanation = client.generate_strategy(message)
+            is_valid, validation_msg = validate_strategy_code(code)
+            
+            return ChatResponse(
+                type="strategy",
+                content=code,
+                explanation=explanation,
+                is_valid=is_valid,
+                message="策略生成成功" if is_valid else f"策略校验失败: {validation_msg}"
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"策略生成失败: {str(e)}")
+    else:
+        # 普通聊天模式
+        if client is None:
+            return ChatResponse(
+                type="chat",
+                content=MOCK_CHAT_RESPONSE,
+                message="[Mock] 返回示例回复"
+            )
+        
+        try:
+            reply = client.chat(message)
+            return ChatResponse(
+                type="chat",
+                content=reply,
+                message=""
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"聊天失败: {str(e)}")
 
 @router.post("/generate", response_model=GenerateResponse)
 async def generate_strategy(
@@ -116,9 +192,17 @@ async def run_backtest(
         raise HTTPException(status_code=400, detail=f"策略无效: {msg}")
 
     # 2. 获取数据
+    # 2. 获取数据
     try:
-        klines = data_client.get_klines(req.symbol, req.interval, limit=1000)
-        # TODO: 处理 days 转换为 limit 或 start_time
+        # 使用 get_historical_klines 支持任意天数的数据获取
+        klines = data_client.get_historical_klines(
+            symbol=req.symbol, 
+            interval=req.interval, 
+            days=req.days
+        )
+    except ValueError as e:
+        # 捕获无效交易对等错误
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"数据获取失败: {e}")
     

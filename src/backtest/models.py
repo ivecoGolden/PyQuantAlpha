@@ -159,15 +159,25 @@ class Position:
         return self.quantity * (current_price - self.avg_price)
     
     def market_value(self, current_price: float) -> float:
-        """计算市值
+        """计算持仓市值（用于净值计算）
+        
+        对于多头：市值 = 数量 * 当前价格
+        对于空头：市值 = 未实现盈亏（因为开空时没有实际购买资产）
         
         Args:
             current_price: 当前价格
             
         Returns:
-            持仓市值
+            持仓市值（多头为正，空头返回浮动盈亏）
         """
-        return abs(self.quantity) * current_price
+        if self.quantity > 0:
+            # 多头：持有资产的市值
+            return self.quantity * current_price
+        elif self.quantity < 0:
+            # 空头：返回浮动盈亏（开仓价 - 现价）* 数量
+            # 空头盈利 = (avg_price - current_price) * abs(quantity)
+            return abs(self.quantity) * (self.avg_price - current_price)
+        return 0.0
 
 
 @dataclass

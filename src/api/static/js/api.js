@@ -5,7 +5,27 @@
 
 const API = {
     /**
-     * 生成策略
+     * 智能聊天（自动识别意图）
+     * @param {string} message 用户消息
+     * @returns {Promise<{type: string, content: string, explanation: string, is_valid: bool}>}
+     */
+    async chat(message) {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || '请求失败');
+        }
+
+        return await res.json();
+    },
+
+    /**
+     * 生成策略（直接生成，不判断意图）
      * @param {string} prompt 用户提示词
      * @returns {Promise<{code: string, explanation: string, is_valid: bool}>}
      */
@@ -15,12 +35,12 @@ const API = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt })
         });
-        
+
         if (!res.ok) {
             const err = await res.json();
             throw new Error(err.detail || '生成失败');
         }
-        
+
         return await res.json();
     },
 
@@ -59,3 +79,4 @@ const API = {
         return `/api/backtest/stream/${taskId}`;
     }
 };
+

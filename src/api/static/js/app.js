@@ -18,34 +18,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
     chatForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const prompt = userInput.value.trim();
-        if (!prompt) return;
+        const message = userInput.value.trim();
+        if (!message) return;
 
         // UI State: Loading
-        UI.addChatMessage('user', prompt);
+        UI.addChatMessage('user', message);
         userInput.value = '';
         userInput.disabled = true;
         sendBtn.disabled = true;
 
-        // Placeholder AI msg
-        const loadingId = Date.now();
-        // UI.addLoadingMessage(loadingId); 暂略，直接等
+        // 生成唯一消息 ID，显示加载状态
+        const msgId = Date.now().toString();
+        UI.addLoadingMessage(msgId, '💭 正在想...');
 
         try {
-            const res = await API.generateStrategy(prompt);
+            // 使用新的 chat API（自动识别意图）
+            const res = await API.chat(message);
 
-            if (res.is_valid) {
-                UI.addChatMessage('ai', `✅ 策略生成成功！<br>已在右侧加载代码和解读。`);
-                currentCode = res.code;
-                UI.updateStrategyView(res.code, res.explanation);
+            if (res.type === 'strategy') {
+                // 策略生成模式
+                UI.updateMessage(msgId, '⏳ 正在生成策略...');
+                UI.showStrategyLoading();
+
+                // 短暂延迟后更新消息（模拟加载效果）
+                await new Promise(r => setTimeout(r, 300));
+
+                if (res.is_valid) {
+                    UI.updateMessage(msgId, `✅ 策略生成成功！<br>已在右侧加载代码和解读。`);
+                } else {
+                    UI.updateMessage(msgId, `⚠️ ${res.message}<br>代码已加载，但可能存在问题。`);
+                }
+
+                currentCode = res.content;
+                UI.updateStrategyView(res.content, res.explanation || "无解读");
             } else {
-                UI.addChatMessage('ai', `⚠️ 策略生成存在问题: ${res.message} <br>这是生成的代码：`);
-                currentCode = res.code;
-                UI.updateStrategyView(res.code, res.explanation || "无解读");
+                // 普通聊天模式 - 替换加载消息为回复
+                UI.updateMessage(msgId, res.content);
             }
 
         } catch (err) {
-            UI.addChatMessage('ai', `❌ 发生错误: ${err.message}`);
+            // 更新加载消息为错误
+            UI.updateMessage(msgId, `❌ 发生错误: ${err.message}`);
         } finally {
             userInput.disabled = false;
             sendBtn.disabled = false;
@@ -113,15 +126,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = JSON.parse(e.data);
                 // 更新进度条
                 UI.updateProgress(data.progress);
-                // 更新图表 (每5次更新一次图表，或者全部更新)
-                // 注意数据量，这里演示直接更新
-                UI.updateChart(data.equity.timestamp || Date.now(), data.equity);
-                // Wait, engine returns equity as float, no timestamp in callback arguments?
-                // Engine callback: on_progress(i, total, equity_float)
-                // Manager sends: { progress, equity: float }
-                // So we need a timestamp. Usually equity curve has it.
-                // For simplified progress, we might just plot point count or fake time.
-                // Let's check manager.py
+                // 更新图表 - equity 是浮点数，timestamp 是单独的字段
+                UI.updateChart(data.timestamp || Date.now(), data.equity);
             });
 
             eventSource.addEventListener('result', (e) => {

@@ -167,31 +167,74 @@ class BacktestEngine:
             
             # 检查资金/持仓是否充足
             if order.side == OrderSide.BUY:
-                required_cash = fill_price * order.quantity + fee
-                if required_cash > self.cash:
-                    order.status = OrderStatus.REJECTED
-                    order.error_msg = ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
-                    logger.warning(ErrorMessage.BACKTEST_ORDER_REJECTED.format(
-                        order_id=order.id, reason=ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
-                    ))
-                    continue
-                
-                # 扣除资金
-                self.cash -= required_cash
-            else:
-                # 卖出时检查持仓
+                # 判断是平空还是开多
                 position = self.positions.get(order.symbol)
-                if not position or position.quantity < order.quantity:
-                    order.status = OrderStatus.REJECTED
-                    order.error_msg = ErrorMessage.BACKTEST_INSUFFICIENT_POSITION
-                    logger.warning(ErrorMessage.BACKTEST_ORDER_REJECTED.format(
-                        order_id=order.id, reason=ErrorMessage.BACKTEST_INSUFFICIENT_POSITION
-                    ))
-                    continue
-                
-                # 卖出收入
-                proceeds = fill_price * order.quantity - fee
-                self.cash += proceeds
+                if position and position.quantity < 0:
+                    # 平空仓：返还保证金 + 计算盈亏
+                    close_qty = min(order.quantity, abs(position.quantity))
+                    # 平空亏损 = close_qty * (buy_price - avg_price)
+                    # 这会在 position.update 中计算
+                    # 需要足够的现金来买入
+                    required_cash = fill_price * order.quantity + fee
+                    if required_cash > self.cash:
+                        order.status = OrderStatus.REJECTED
+                        order.error_msg = ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
+                        logger.warning(ErrorMessage.BACKTEST_ORDER_REJECTED.format(
+                            order_id=order.id, reason=ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
+                        ))
+                        continue
+                    self.cash -= required_cash
+                else:
+                    # 开多仓或加仓
+                    required_cash = fill_price * order.quantity + fee
+                    if required_cash > self.cash:
+                        order.status = OrderStatus.REJECTED
+                        order.error_msg = ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
+                        logger.warning(ErrorMessage.BACKTEST_ORDER_REJECTED.format(
+                            order_id=order.id, reason=ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
+                        ))
+                        continue
+                    # 扣除资金
+                    self.cash -= required_cash
+            else:
+                # SELL: 平多或开空
+                position = self.positions.get(order.symbol)
+                if position and position.quantity > 0:
+                    # 有多头持仓：平多
+                    if position.quantity >= order.quantity:
+                        # 全部平仓或部分平仓，收到卖出款项
+                        proceeds = fill_price * order.quantity - fee
+                        self.cash += proceeds
+                    else:
+                        # 部分平多 + 开空
+                        # 平多部分收到款项
+                        close_qty = position.quantity
+                        proceeds = fill_price * close_qty - fee
+                        self.cash += proceeds
+                        # 开空部分需要保证金
+                        short_qty = order.quantity - close_qty
+                        margin_required = fill_price * short_qty  # 100% 保证金
+                        if margin_required > self.cash:
+                            order.status = OrderStatus.REJECTED
+                            order.error_msg = ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
+                            logger.warning(ErrorMessage.BACKTEST_ORDER_REJECTED.format(
+                                order_id=order.id, reason="开空保证金不足"
+                            ))
+                            continue
+                        # 冻结保证金（不扣除，只是锁定）
+                else:
+                    # 无多头持仓：直接开空（需要保证金）
+                    margin_required = fill_price * order.quantity + fee  # 100% 保证金
+                    if margin_required > self.cash:
+                        order.status = OrderStatus.REJECTED
+                        order.error_msg = ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
+                        logger.warning(ErrorMessage.BACKTEST_ORDER_REJECTED.format(
+                            order_id=order.id, reason="开空保证金不足"
+                        ))
+                        continue
+                    # 注意：开空不扣除现金，只是冻结保证金概念
+                    # 但为了简化，我们扣除手续费
+                    self.cash -= fee
             
             # 更新持仓
             position = self.positions.setdefault(order.symbol, Position(order.symbol))
@@ -314,9 +357,12 @@ class BacktestEngine:
             symbol: 交易对
             
         Returns:
-            Position 对象，如果无持仓返回 None
+            Position 对象，如果无持仓或持仓数量为 0 则返回 None
         """
-        return self.positions.get(symbol)
+        position = self.positions.get(symbol)
+        if position is None or position.quantity == 0:
+            return None
+        return position
     
     def _api_get_cash(self) -> float:
         """获取可用资金"""

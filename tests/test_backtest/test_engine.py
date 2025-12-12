@@ -235,3 +235,84 @@ class TestBacktestEngineEquity:
         final_equity = result.equity_curve[-1]["equity"]
         assert final_equity == pytest.approx(110000, rel=0.01)
 
+
+class TestBacktestEngineShortSelling:
+    """做空功能测试"""
+    
+    def test_open_short(self):
+        """测试开空仓"""
+        SHORT_STRATEGY = '''
+class Strategy:
+    def init(self):
+        self.shorted = False
+    
+    def on_bar(self, bar):
+        if not self.shorted:
+            self.order("BTCUSDT", "SELL", 1.0)
+            self.shorted = True
+'''
+        bars = make_bars([50000, 50000, 50000])
+        config = BacktestConfig(
+            initial_capital=100000,
+            commission_rate=0,
+            slippage=0
+        )
+        engine = BacktestEngine(config)
+        result = engine.run(SHORT_STRATEGY, bars)
+        
+        assert result.total_trades == 1
+        assert engine.positions["BTCUSDT"].quantity == -1.0
+    
+    def test_short_then_close_profit(self):
+        """测试开空后平仓盈利"""
+        SHORT_CLOSE_STRATEGY = '''
+class Strategy:
+    def init(self):
+        self.bar_count = 0
+    
+    def on_bar(self, bar):
+        self.bar_count += 1
+        if self.bar_count == 1:
+            self.order("BTCUSDT", "SELL", 1.0)
+        elif self.bar_count == 4:
+            self.order("BTCUSDT", "BUY", 1.0)
+'''
+        bars = make_bars([50000, 50000, 45000, 40000, 40000])
+        config = BacktestConfig(
+            initial_capital=100000,
+            commission_rate=0,
+            slippage=0
+        )
+        engine = BacktestEngine(config)
+        result = engine.run(SHORT_CLOSE_STRATEGY, bars)
+        
+        assert result.total_trades == 2
+        assert engine.positions["BTCUSDT"].quantity == 0
+        
+        pnl_trade = [t for t in result.trades if t.pnl != 0]
+        assert len(pnl_trade) == 1
+        assert pnl_trade[0].pnl == pytest.approx(10000, rel=0.01)
+    
+    def test_short_position_equity(self):
+        """测试空头持仓净值"""
+        SHORT_HOLD_STRATEGY = '''
+class Strategy:
+    def init(self):
+        self.shorted = False
+    
+    def on_bar(self, bar):
+        if not self.shorted:
+            self.order("BTCUSDT", "SELL", 1.0)
+            self.shorted = True
+'''
+        bars = make_bars([50000, 50000, 40000])
+        config = BacktestConfig(
+            initial_capital=100000,
+            commission_rate=0,
+            slippage=0
+        )
+        engine = BacktestEngine(config)
+        result = engine.run(SHORT_HOLD_STRATEGY, bars)
+        
+        final_equity = result.equity_curve[-1]["equity"]
+        assert final_equity > 100000  # 有浮盈

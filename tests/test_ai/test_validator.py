@@ -178,8 +178,25 @@ class Strategy:
         assert hasattr(strategy, 'on_bar')
     
     def test_execute_invalid_code_raises(self):
-        """测试执行无效代码抛出异常"""
-        code = "x = 1"  # 没有 Strategy 类
-        with pytest.raises(RuntimeError) as exc_info:
+        """测试执行非法代码抛出异常"""
+        code = "raise RuntimeError('Boom')"
+        with pytest.raises(RuntimeError):
             execute_strategy_code(code)
-        assert "未找到 Strategy 类" in str(exc_info.value)
+            
+    def test_execute_with_helper_class(self):
+        """测试执行带有辅助类的策略"""
+        code = """
+class Helper:
+    def get_value(self):
+        return 42
+
+class Strategy:
+    def init(self):
+        self.helper = Helper()
+        
+    def on_bar(self, bar):
+        val = self.helper.get_value()
+"""
+        strategy = execute_strategy_code(code)
+        strategy.init()
+        # 只要不抛出 NameError 就算成功

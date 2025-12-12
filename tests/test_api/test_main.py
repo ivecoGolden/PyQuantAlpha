@@ -134,8 +134,8 @@ class Strategy:
     def init(self): pass
     def on_bar(self, bar): pass
 '''
-        # Mock getting data for backtest
-        mock_binance.get_klines.return_value = [
+        # Mock getting data for backtest (using get_historical_klines now)
+        mock_binance.get_historical_klines.return_value = [
             Bar(timestamp=1000, open=10, high=11, low=9, close=10, volume=100)
             for _ in range(100)
         ]
@@ -149,6 +149,9 @@ class Strategy:
         assert response.status_code == 200, f"Response: {response.text}"
         data = response.json()
         assert "task_id" in data
+        
+        # Verify get_historical_klines called
+        mock_binance.get_historical_klines.assert_called()
 
     def test_backtest_requires_code(self, client):
         """测试 code 参数必填"""
@@ -162,3 +165,23 @@ class Strategy:
             "symbol": "BTCUSDT"
         })
         assert response.status_code == 400
+
+    def test_backtest_invalid_symbol_returns_400(self, client):
+        """测试无效交易对返回 400"""
+        valid_code = "class Strategy:\n    def init(self): pass\n    def on_bar(self, bar): pass"
+        
+        # 模拟抛出 ValueError on get_historical_klines
+        mock_binance.get_historical_klines.side_effect = ValueError("Invalid symbol")
+        
+        response = client.post("/api/backtest/run", json={
+            "code": valid_code,
+            "symbol": "INVALID",
+             "interval": "1h",
+            "days": 30
+        })
+        
+        assert response.status_code == 400
+        assert "Invalid symbol" in response.json()["detail"]
+        
+        # 恢复
+        mock_binance.get_historical_klines.side_effect = None

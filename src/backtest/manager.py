@@ -151,6 +151,9 @@ class BacktestManager:
                     "total_return": result.total_return,
                     "max_drawdown": result.max_drawdown,
                     "sharpe_ratio": result.sharpe_ratio,
+                    "win_rate": result.win_rate,
+                    "profit_factor": result.profit_factor,
+                    "total_trades": result.total_trades,
                     "equity_curve": result.equity_curve, 
                     "trades": [
                         {

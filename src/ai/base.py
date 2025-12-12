@@ -3,6 +3,33 @@
 
 from abc import ABC, abstractmethod
 from typing import Optional
+from dataclasses import dataclass
+
+
+@dataclass
+class ChatResult:
+    """聊天结果
+    
+    Attributes:
+        type: "chat" 或 "strategy"
+        content: 聊天回复或策略代码
+        explanation: 策略解读（仅 type=strategy 时有值）
+        is_valid: 策略是否通过校验（仅 type=strategy 时有意义）
+    """
+    type: str
+    content: str
+    explanation: str = ""
+    is_valid: bool = True
+
+
+# 策略相关关键词
+STRATEGY_KEYWORDS = [
+    "策略", "均线", "EMA", "SMA", "RSI", "MACD", "布林", "ATR",
+    "买入", "卖出", "做多", "做空", "开仓", "平仓",
+    "金叉", "死叉", "突破", "回撤", "止损", "止盈",
+    "回测", "指标", "信号", "趋势", "震荡",
+    "strategy", "backtest", "indicator", "trade", "order"
+]
 
 
 class BaseLLMClient(ABC):
@@ -33,6 +60,35 @@ class BaseLLMClient(ABC):
             生成的 Python 策略代码
         """
         pass
+    
+    @abstractmethod
+    def chat(
+        self,
+        message: str,
+        max_tokens: int = 1000
+    ) -> str:
+        """普通聊天
+        
+        Args:
+            message: 用户消息
+            max_tokens: 最大生成 token 数
+            
+        Returns:
+            AI 回复
+        """
+        pass
+    
+    def is_strategy_request(self, message: str) -> bool:
+        """判断是否为策略生成请求
+        
+        Args:
+            message: 用户消息
+            
+        Returns:
+            是否包含策略相关关键词
+        """
+        message_lower = message.lower()
+        return any(kw.lower() in message_lower for kw in STRATEGY_KEYWORDS)
     
     def _extract_code(self, content: str) -> str:
         """从响应中提取代码块
@@ -87,3 +143,4 @@ class BaseLLMClient(ABC):
             explanation = "AI 未提供详细解读。"
             
         return code, explanation
+

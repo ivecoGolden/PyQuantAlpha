@@ -6,11 +6,14 @@
 const UI = {
     // Chart 实例
     chart: null,
+    // 当前策略代码（用于复制）
+    currentCode: "",
 
     // 初始化
     init() {
         this.initChart();
         this.bindTabs();
+        this.bindCopyButton();
     },
 
     /**
@@ -95,12 +98,18 @@ const UI = {
 
         document.getElementById('chart-overlay').classList.add('hidden');
 
-        // 简单的时间格式化
-        const date = new Date(label).toLocaleDateString();
+        // 格式化时间 (显示日期和时间，以支持 intraday 数据)
+        const dateObj = new Date(label);
+        const dateStr = dateObj.toLocaleString('zh-CN', {
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
 
         // 限制数据点数量，避免浏览器卡顿 (保留最近 1000 点或抽样)
         // 这里简化直接 push
-        this.chart.data.labels.push(date);
+        this.chart.data.labels.push(dateStr);
         this.chart.data.datasets[0].data.push(value);
 
         // 每 N 个点更新一次界面，或者由上层控制频率
@@ -111,17 +120,19 @@ const UI = {
      * 添加聊天消息
      * @param {string} role 'user' | 'ai'
      * @param {string} text 消息内容
+     * @param {string} id 可选消息 ID（用于后续更新）
      */
-    addChatMessage(role, text) {
+    addChatMessage(role, text, id = null) {
         const container = document.getElementById('chat-history');
         const isAI = role === 'ai';
 
+        const msgId = id ? `id="msg-${id}"` : '';
         const html = `
-            <div class="flex gap-3 ${!isAI ? 'flex-row-reverse' : ''} animate-fade-in">
+            <div ${msgId} class="flex gap-3 ${!isAI ? 'flex-row-reverse' : ''} animate-fade-in">
                 <div class="w-8 h-8 rounded-full ${isAI ? 'bg-blue-600' : 'bg-gray-600'} flex items-center justify-center flex-shrink-0">
                     <i data-lucide="${isAI ? 'bot' : 'user'}" class="w-5 h-5 text-white"></i>
                 </div>
-                <div class="${isAI ? 'bg-gray-800' : 'bg-blue-600/20 border border-blue-500/30'} p-3 rounded-lg ${isAI ? 'rounded-tl-none' : 'rounded-tr-none'} max-w-[85%] text-sm leading-relaxed shadow-sm">
+                <div class="msg-content ${isAI ? 'bg-gray-800' : 'bg-blue-600/20 border border-blue-500/30'} p-3 rounded-lg ${isAI ? 'rounded-tl-none' : 'rounded-tr-none'} max-w-[85%] text-sm leading-relaxed shadow-sm">
                     ${text}
                 </div>
             </div>
@@ -133,11 +144,57 @@ const UI = {
     },
 
     /**
+     * 添加加载中消息（可更新）
+     * @param {string} id 消息 ID
+     * @param {string} text 加载中文本
+     */
+    addLoadingMessage(id, text = '⏳ 正在生成策略...') {
+        this.addChatMessage('ai', `<span class="loading-text">${text}</span>`, id);
+    },
+
+    /**
+     * 更新已有消息内容
+     * @param {string} id 消息 ID
+     * @param {string} newText 新内容
+     */
+    updateMessage(id, newText) {
+        const msg = document.getElementById(`msg-${id}`);
+        if (msg) {
+            const content = msg.querySelector('.msg-content');
+            if (content) {
+                content.innerHTML = newText;
+            }
+        }
+    },
+
+    /**
+     * 显示策略加载中状态
+     */
+    showStrategyLoading() {
+        const codeEl = document.getElementById('code-display');
+        codeEl.textContent = '# 策略生成中...';
+        codeEl.classList.remove('hljs');
+
+        // 隐藏复制按钮和已校验状态
+        this.hideCopyButton();
+        document.getElementById('strategy-status').classList.add('hidden');
+
+        // 清空解读
+        const expEl = document.getElementById('explanation-display');
+        expEl.innerHTML = '<p class="text-gray-500 italic">等待生成...</p>';
+
+        // 切换到代码 Tab
+        this.switchTab('code');
+    },
+
+    /**
      * 更新策略显示
      * @param {string} code 
      * @param {string} explanation 
      */
     updateStrategyView(code, explanation) {
+        this.currentCode = code;
+
         // 更新代码
         const codeEl = document.getElementById('code-display');
         codeEl.textContent = code;
@@ -150,8 +207,61 @@ const UI = {
         // 切换到代码 Tab
         this.switchTab('code');
 
-        // 显示已校验状态
+        // 显示已校验状态和复制按钮
         document.getElementById('strategy-status').classList.remove('hidden');
+        this.showCopyButton();
+    },
+
+    /**
+     * 绑定复制按钮
+     */
+    bindCopyButton() {
+        const btn = document.getElementById('copy-code-btn');
+        if (btn) {
+            btn.addEventListener('click', () => this.copyCode());
+        }
+    },
+
+    /**
+     * 显示复制按钮
+     */
+    showCopyButton() {
+        const btn = document.getElementById('copy-code-btn');
+        if (btn) btn.classList.remove('hidden');
+    },
+
+    /**
+     * 隐藏复制按钮
+     */
+    hideCopyButton() {
+        const btn = document.getElementById('copy-code-btn');
+        if (btn) btn.classList.add('hidden');
+    },
+
+    /**
+     * 复制代码到剪贴板
+     */
+    async copyCode() {
+        if (!this.currentCode) return;
+
+        try {
+            await navigator.clipboard.writeText(this.currentCode);
+
+            // 显示复制成功反馈
+            const btn = document.getElementById('copy-code-btn');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i>';
+            btn.classList.add('text-green-400');
+            lucide.createIcons();
+
+            setTimeout(() => {
+                btn.innerHTML = originalHTML;
+                btn.classList.remove('text-green-400');
+                lucide.createIcons();
+            }, 2000);
+        } catch (err) {
+            console.error('复制失败:', err);
+        }
     },
 
     /**
@@ -205,12 +315,19 @@ const UI = {
     updateMetrics(data) {
         if (!data) return;
 
-        const formatPercent = (v) => (v * 100).toFixed(2) + '%';
-        const formatNum = (v) => v.toFixed(2);
+        const formatPercent = (v) => {
+            if (v === null || v === undefined || isNaN(v)) return '--%';
+            return (v * 100).toFixed(2) + '%';
+        };
+        const formatNum = (v) => {
+            if (v === null || v === undefined || isNaN(v)) return '--';
+            return v.toFixed(2);
+        };
 
         document.getElementById('metric-return').textContent = formatPercent(data.total_return);
         document.getElementById('metric-drawdown').textContent = formatPercent(data.max_drawdown);
         document.getElementById('metric-sharpe').textContent = formatNum(data.sharpe_ratio);
+        // 如果后端返回 0 但实际上是一次交易都没做，也可以考虑显示 --，但这里遵循数据
         document.getElementById('metric-winrate').textContent = formatPercent(data.win_rate);
     }
 };
@@ -222,3 +339,4 @@ style.innerHTML = `
     @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 `;
 document.head.appendChild(style);
+

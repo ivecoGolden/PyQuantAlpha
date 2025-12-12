@@ -5,7 +5,7 @@ from openai import OpenAI
 from typing import Optional
 
 from .base import BaseLLMClient
-from .prompt import SYSTEM_PROMPT
+from .prompt import SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT
 from src.messages import ErrorMessage
 
 
@@ -73,4 +73,36 @@ class DeepSeekClient(BaseLLMClient):
             return self._extract_code_and_explanation(content)
         except Exception as e:
             raise RuntimeError(ErrorMessage.LLM_API_FAILED.format(provider="DeepSeek", error=str(e)))
+
+    def chat(
+        self,
+        message: str,
+        max_tokens: int = 1000
+    ) -> str:
+        """普通聊天
+        
+        Args:
+            message: 用户消息
+            max_tokens: 最大生成 token 数
+            
+        Returns:
+            AI 回复
+            
+        Raises:
+            RuntimeError: API 调用失败
+        """
+        try:
+            response = self._client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": CHAT_SYSTEM_PROMPT},
+                    {"role": "user", "content": message}
+                ],
+                temperature=self._temperature,
+                max_tokens=max_tokens
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            raise RuntimeError(ErrorMessage.LLM_API_FAILED.format(provider="DeepSeek", error=str(e)))
+
 

@@ -183,8 +183,11 @@ def execute_strategy_code(code: str) -> object:
         pass
 
     try:
-        exec(code, safe_globals, safe_locals)
-        strategy_class = safe_locals.get('Strategy')
+        # 使用同一个字典作为 globals 和 locals
+        # 这样定义的辅助类（如 VIXIndicator）会进入 globals
+        # 使得 Strategy 类的方法可以访问到它们
+        exec(code, safe_globals, safe_globals)
+        strategy_class = safe_globals.get('Strategy')
         if strategy_class is None:
             raise RuntimeError(ErrorMessage.STRATEGY_CLASS_NOT_FOUND)
         return strategy_class()
