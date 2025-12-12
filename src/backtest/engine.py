@@ -3,7 +3,7 @@
 
 import uuid
 import logging
-from typing import Dict, List, Optional, Any, Type
+from typing import Dict, List, Optional, Any, Callable
 
 from src.data.models import Bar
 from src.ai.validator import execute_strategy_code
@@ -57,12 +57,18 @@ class BacktestEngine:
         self._order_counter = 0
         self._trade_counter = 0
     
-    def run(self, strategy_code: str, data: List[Bar]) -> BacktestResult:
+    def run(
+        self,
+        strategy_code: str,
+        data: List[Bar],
+        on_progress: Optional[Callable[[int, int, float], None]] = None
+    ) -> BacktestResult:
         """运行回测
         
         Args:
             strategy_code: 策略代码字符串
             data: K 线数据列表
+            on_progress: 进度回调 (current_index, total_length, equity)
             
         Returns:
             BacktestResult 回测结果
@@ -90,7 +96,8 @@ class BacktestEngine:
             raise RuntimeError(ErrorMessage.BACKTEST_STRATEGY_INIT_FAILED.format(error=e))
         
         # 3. 遍历数据
-        for bar in data:
+        total_bars = len(data)
+        for i, bar in enumerate(data):
             self._current_bar = bar
             
             # 3.1 撮合待处理订单
@@ -102,6 +109,11 @@ class BacktestEngine:
                 "timestamp": bar.timestamp,
                 "equity": equity
             })
+            
+            # 如果有回调，上报进度
+            # 注意：高频回测可能影响性能，可以加一个 sampling check，比如每 1% 或每 100 根 BAR 更新
+            if on_progress:
+                on_progress(i + 1, total_bars, equity)
             
             # 3.3 执行策略 on_bar
             try:

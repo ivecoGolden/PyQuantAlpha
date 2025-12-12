@@ -696,18 +696,30 @@ class Strategy:
 3. ✅ 实现绩效分析 (`src/backtest/analyzer.py`)
 4. ✅ 单元测试 (`tests/test_backtest/` 219 passed)
 
-### Step 7: 端点完善 (当前阶段)
+### Step 7: 端点完善 ✅
 
-1. [ ] 完善 `/api/backtest` (集成 `BacktestEngine`)
-2. [ ] 更新 `BacktestRequest` 模型支持回测参数
-3. [ ] 增加错误处理 (`ErrorMessage`)
-4. [ ] 编写 API 集成测试
+1. ✅ **AI 交互升级**:
+   - 修改 `src/ai/` 接口，支持返回 `(code, explanation)` 元组
+   - 更新 `GenerateResponse` 增加 `explanation` 字段
+   - 优化 Prompt 要求模型输出策略解读
+2. ✅ **回测引擎集成**:
+   - 修改 `BacktestEngine` 支持 `on_progress` 回调
+   - 集成 `src/backtest` 到 API
+3. ✅ **实时回测接口**:
+   - 实现 `POST /api/backtest/run` 启动回测
+   - 实现 `GET /api/backtest/stream` (SSE) 推送实时进度和净值更新
 
-### Step 8: 前端
+### Step 8: 前端 (Simple HTML)
 
-1. 实现 Streamlit 页面
-2. 对接 API
-3. 结果可视化
+1. [ ] **单页应用 (`index.html`)**:
+   - 聊天输入框 (与 AI 交互)
+   - 策略展示区 (代码高亮 + 策略解读)
+   - 控制面板 (运行回测按钮)
+   - 结果展示区 (实时进度条 + 净值曲线图)
+2. [ ] **交互逻辑 (Vanilla JS)**:
+   - `fetch` 调用生成接口
+   - `EventSource` 监听回测进度
+   - Chart.js 绘制简易图表
 
 ### Step 9: 集成测试
 

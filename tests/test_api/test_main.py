@@ -42,11 +42,10 @@ def reset_mock():
     ]
     
     # 设置默认返回值: LLM
-    mock_llm_client.generate_strategy.return_value = '''
-class Strategy:
+    mock_llm_client.generate_strategy.return_value = ('''class Strategy:
     def init(self): pass
     def on_bar(self, bar): pass
-'''
+''', "# Mock 解读")
 
 class TestHealthEndpoint:
     """健康检查端点测试"""
@@ -134,6 +133,7 @@ class TestGenerateEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert "code" in data
+        assert "explanation" in data
         assert "class Strategy" in data["code"]
     
     def test_generate_requires_prompt(self):
@@ -145,8 +145,8 @@ class TestGenerateEndpoint:
 class TestBacktestEndpoint:
     """回测端点测试 (Mock)"""
     
-    def test_backtest_returns_result(self):
-        """测试返回回测结果"""
+    def test_backtest_starts_task(self):
+        """测试启动回测任务"""
         # 使用有效的策略代码（通过校验）
         valid_code = '''
 class Strategy:
@@ -156,7 +156,7 @@ class Strategy:
     def on_bar(self, bar):
         self.value += 1
 '''
-        response = client.post("/api/backtest", json={
+        response = client.post("/api/backtest/run", json={
             "code": valid_code,
             "symbol": "BTCUSDT",
             "interval": "1h",
@@ -164,19 +164,17 @@ class Strategy:
         })
         assert response.status_code == 200
         data = response.json()
-        assert "total_return" in data
-        assert "max_drawdown" in data
-        assert "sharpe_ratio" in data
-        assert "win_rate" in data
+        assert "task_id" in data
+        assert "message" in data
     
     def test_backtest_requires_code(self):
         """测试 code 参数必填"""
-        response = client.post("/api/backtest", json={})
+        response = client.post("/api/backtest/run", json={})
         assert response.status_code == 422
     
     def test_backtest_invalid_code_returns_400(self):
         """测试无效代码返回 400"""
-        response = client.post("/api/backtest", json={
+        response = client.post("/api/backtest/run", json={
             "code": "invalid code",
             "symbol": "BTCUSDT"
         })

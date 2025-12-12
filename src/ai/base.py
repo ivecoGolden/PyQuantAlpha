@@ -61,3 +61,29 @@ class BaseLLMClient(ABC):
                 return content[start:end].strip()
         
         return content.strip()
+
+    def _extract_code_and_explanation(self, content: str) -> tuple[str, str]:
+        """提取代码和解读
+        
+        Returns:
+            (code, explanation)
+        """
+        code = self._extract_code(content)
+        explanation = "暂无解读"
+        
+        # 尝试提取 explanation 块
+        if "```explanation" in content:
+            start = content.find("```explanation") + 14
+            end = content.find("```", start)
+            if end > start:
+                explanation = content[start:end].strip()
+        else:
+            # 如果没有明确标签，移除代码块后剩余部分作为解读
+            explanation = content.replace(f"```python\n{code}\n```", "").replace(f"```\n{code}\n```", "").strip()
+            # 清理可能的剩余反引号
+            explanation = explanation.replace("```", "").strip()
+            
+        if not explanation:
+            explanation = "AI 未提供详细解读。"
+            
+        return code, explanation

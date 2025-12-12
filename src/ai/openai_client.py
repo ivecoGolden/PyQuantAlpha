@@ -40,7 +40,7 @@ class OpenAIClient(BaseLLMClient):
         self,
         user_prompt: str,
         max_tokens: int = 2000
-    ) -> str:
+    ) -> tuple[str, str]:
         """生成策略代码
         
         Args:
@@ -48,7 +48,7 @@ class OpenAIClient(BaseLLMClient):
             max_tokens: 最大生成 token 数
             
         Returns:
-            生成的 Python 策略代码
+            (code, explanation) 生成的策略代码和解读
             
         Raises:
             RuntimeError: API 调用失败
@@ -64,7 +64,7 @@ class OpenAIClient(BaseLLMClient):
                 max_tokens=max_tokens
             )
             content = response.choices[0].message.content
-            return self._extract_code(content)
+            return self._extract_code_and_explanation(content)
         except Exception as e:
             raise RuntimeError(ErrorMessage.LLM_API_FAILED.format(provider="OpenAI", error=str(e)))
 
