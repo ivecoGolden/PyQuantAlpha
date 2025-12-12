@@ -2,7 +2,6 @@
 """LLM 客户端工厂"""
 
 from enum import Enum
-from typing import Optional
 
 from .base import BaseLLMClient
 from src.messages import ErrorMessage
@@ -18,7 +17,7 @@ class LLMProvider(Enum):
 def create_llm_client(
     provider: LLMProvider,
     api_key: str,
-    model: Optional[str] = None,
+    model: str | None = None,
     **kwargs
 ) -> BaseLLMClient:
     """创建 LLM 客户端实例
@@ -37,7 +36,7 @@ def create_llm_client(
         
     Example:
         >>> client = create_llm_client(LLMProvider.DEEPSEEK, "your_key")
-        >>> code = client.generate_strategy("EMA 金叉做多")
+        >>> content, code, exp, symbols = client.unified_chat("双均线策略")
         
         # 切换到 OpenAI
         >>> client = create_llm_client(LLMProvider.OPENAI, "your_key")

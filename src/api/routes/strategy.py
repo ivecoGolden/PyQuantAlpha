@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from src.ai import LLMProvider, create_llm_client, validate_strategy_code, STRATEGY_KEYWORDS
+from src.ai import LLMProvider, create_llm_client, validate_strategy_code
 from src.messages import ErrorMessage
 from src.data.binance import BinanceClient
 from src.backtest.manager import BacktestManager
@@ -16,7 +16,16 @@ from src.backtest.manager import BacktestManager
 
 router = APIRouter()
 
-# ILLEGAL: Global instances should be managed via dependency injection or singletons
+# 策略相关关键词
+STRATEGY_KEYWORDS = [
+    "策略", "均线", "EMA", "SMA", "RSI", "MACD", "布林", "ATR",
+    "买入", "卖出", "做多", "做空", "开仓", "平仓",
+    "金叉", "死叉", "突破", "回撤", "止损", "止盈",
+    "回测", "指标", "信号", "趋势", "震荡",
+    "strategy", "backtest", "indicator", "trade", "order"
+]
+
+# 全局实例（延迟初始化，后续可迁移至依赖注入）
 _llm_client = None
 _backtest_manager = BacktestManager()
 
@@ -45,6 +54,7 @@ async def get_llm_dependency():
 
 class ChatRequest(BaseModel):
     message: str = Field(..., description="用户消息")
+    context_code: str | None = Field(None, description="当前策略代码（可选）")
 
 class ChatResponse(BaseModel):
     type: str = Field(..., description="响应类型：chat 或 strategy")
@@ -52,15 +62,7 @@ class ChatResponse(BaseModel):
     explanation: str = Field("", description="策略解读（仅 type=strategy）")
     is_valid: bool = Field(True, description="策略是否通过校验（仅 type=strategy）")
     message: str = Field("", description="状态消息")
-
-class GenerateRequest(BaseModel):
-    prompt: str = Field(..., description="用自然语言描述策略")
-
-class GenerateResponse(BaseModel):
-    code: str = Field(..., description="生成的策略代码")
-    explanation: str = Field(..., description="策略解读")
-    message: str = Field(..., description="状态消息")
-    is_valid: bool = Field(True, description="代码是否通过校验")
+    symbols: list[str] = Field(default_factory=list, description="涉及的交易对")
 
 class BacktestRequest(BaseModel):
     code: str = Field(..., description="策略代码")
@@ -87,7 +89,7 @@ MOCK_CHAT_RESPONSE = "你好！我是 PyQuantAlpha 的 AI 助手。你可以告�
 # ============ 辅助函数 ============
 
 def is_strategy_request(message: str) -> bool:
-    """判断是否为策略生成请求"""
+    """判断是否为策略生成请求 (deprecated - kept for backwards compatibility)"""
     message_lower = message.lower()
     return any(kw.lower() in message_lower for kw in STRATEGY_KEYWORDS)
 
@@ -98,18 +100,19 @@ async def chat(
     req: ChatRequest,
     client = Depends(get_llm_dependency)
 ) -> ChatResponse:
-    """智能聊天端点
+    """统一上下文感知聊天端点
     
-    自动识别用户意图：
-    - 普通聊天：直接返回 AI 回复
-    - 策略生成：生成策略代码并校验
+    LLM 返回 JSON 格式，自动识别用户意图：
+    - type=strategy → 策略生成/修改
+    - type=chat → 普通聊天
     """
     message = req.message.strip()
+    context_code = req.context_code
     
-    # 判断意图
-    if is_strategy_request(message):
-        # 策略生成模式
-        if client is None:
+    # Mock 模式
+    if client is None:
+        # 使用旧逻辑作为 fallback
+        if is_strategy_request(message):
             return ChatResponse(
                 type="strategy",
                 content=MOCK_STRATEGY_CODE,
@@ -117,66 +120,59 @@ async def chat(
                 is_valid=True,
                 message="[Mock] 返回示例策略"
             )
-        
-        try:
-            code, explanation = client.generate_strategy(message)
-            is_valid, validation_msg = validate_strategy_code(code)
-            
-            return ChatResponse(
-                type="strategy",
-                content=code,
-                explanation=explanation,
-                is_valid=is_valid,
-                message="策略生成成功" if is_valid else f"策略校验失败: {validation_msg}"
-            )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"策略生成失败: {str(e)}")
-    else:
-        # 普通聊天模式
-        if client is None:
+        else:
             return ChatResponse(
                 type="chat",
                 content=MOCK_CHAT_RESPONSE,
                 message="[Mock] 返回示例回复"
             )
-        
-        try:
-            reply = client.chat(message)
-            return ChatResponse(
-                type="chat",
-                content=reply,
-                message=""
-            )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"聊天失败: {str(e)}")
-
-@router.post("/generate", response_model=GenerateResponse)
-async def generate_strategy(
-    req: GenerateRequest,
-    client = Depends(get_llm_dependency)
-) -> GenerateResponse:
-    """AI 生成策略代码"""
-    if client is None:
-        return GenerateResponse(
-            code=MOCK_STRATEGY_CODE,
-            explanation="# Mock 解读\n未配置 API Key。",
-            message="[Mock] 返回示例策略",
-            is_valid=True
-        )
     
     try:
-        code, explanation = client.generate_strategy(req.prompt)
-        is_valid, validation_msg = validate_strategy_code(code)
+        # 使用统一聊天方法，返回 LLMResponse 对象
+        response = client.unified_chat(message, context_code)
         
-        return GenerateResponse(
-            code=code,
-            explanation=explanation,
-            message="策略生成成功" if is_valid else ErrorMessage.STRATEGY_INVALID.format(msg=validation_msg),
-            is_valid=is_valid
-        )
+        if response.is_strategy:
+            # 策略生成/修改模式
+            is_valid, validation_msg = validate_strategy_code(response.code)
+            return ChatResponse(
+                type="strategy",
+                content=response.code,
+                explanation="",
+                is_valid=is_valid,
+                message="成功" if is_valid else f"校验失败: {validation_msg}",
+                symbols=response.symbols
+            )
+        else:
+            # 普通聊天模式
+            return ChatResponse(
+                type="chat",
+                content=response.content,
+                message="",
+                symbols=response.symbols
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=ErrorMessage.HTTP_INTERNAL_ERROR.format(error=str(e)))
+
+class ExplainRequest(BaseModel):
+    code: str = Field(..., description="策略代码")
+
+class ExplainResponse(BaseModel):
+    explanation: str = Field(..., description="策略解读")
+
+@router.post("/explain", response_model=ExplainResponse)
+async def explain_strategy_endpoint(
+    req: ExplainRequest,
+    client = Depends(get_llm_dependency)
+):
+    """生成策略解读"""
+    if client is None:
+        return ExplainResponse(explanation="# Mock 解读\n未配置 API Key。")
+    
+    try:
+        explanation = client.explain_strategy(req.code)
+        return ExplainResponse(explanation=explanation)
     except Exception as e:
         raise HTTPException(status_code=500, detail=ErrorMessage.HTTP_AI_GENERATE_FAILED.format(error=str(e)))
-
 
 from src.api.routes.klines import get_binance_client
 
@@ -189,9 +185,8 @@ async def run_backtest(
     # 1. 校验代码
     is_valid, msg = validate_strategy_code(req.code)
     if not is_valid:
-        raise HTTPException(status_code=400, detail=f"策略无效: {msg}")
+        raise HTTPException(status_code=400, detail=ErrorMessage.STRATEGY_INVALID.format(msg=msg))
 
-    # 2. 获取数据
     # 2. 获取数据
     try:
         # 使用 get_historical_klines 支持任意天数的数据获取
@@ -204,10 +199,10 @@ async def run_backtest(
         # 捕获无效交易对等错误
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"数据获取失败: {e}")
+        raise HTTPException(status_code=500, detail=ErrorMessage.HTTP_INTERNAL_ERROR.format(error=str(e)))
     
     if not klines:
-        raise HTTPException(status_code=400, detail="未获取到回测数据")
+        raise HTTPException(status_code=400, detail=ErrorMessage.BACKTEST_DATA_EMPTY)
 
     # 3. 启动任务
     task_id = await _backtest_manager.start_backtest(req.code, klines)

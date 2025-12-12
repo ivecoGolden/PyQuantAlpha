@@ -20,6 +20,7 @@ from .models import (
     BacktestResult,
 )
 from .analyzer import BacktestAnalyzer
+from .logger import BacktestLogger
 
 
 logger = logging.getLogger(__name__)
@@ -36,13 +37,15 @@ class BacktestEngine:
         >>> print(f"总收益率: {result.total_return:.2%}")
     """
     
-    def __init__(self, config: Optional[BacktestConfig] = None) -> None:
+    def __init__(self, config: Optional[BacktestConfig] = None, enable_logging: bool = True) -> None:
         """初始化回测引擎
         
         Args:
             config: 回测配置，默认使用 BacktestConfig()
+            enable_logging: 是否启用详细日志记录
         """
         self.config = config or BacktestConfig()
+        self.enable_logging = enable_logging
         self._reset()
     
     def _reset(self) -> None:
@@ -56,6 +59,11 @@ class BacktestEngine:
         self._strategy = None
         self._order_counter = 0
         self._trade_counter = 0
+        
+        # Step 10: 新增功能
+        self._bar_history: List[Bar] = []  # 历史数据缓存
+        self._symbols: set = set()  # 使用的交易对
+        self._logger = BacktestLogger(enabled=self.enable_logging)  # 日志记录器
     
     def run(
         self,
@@ -99,6 +107,7 @@ class BacktestEngine:
         total_bars = len(data)
         for i, bar in enumerate(data):
             self._current_bar = bar
+            self._bar_history.append(bar)  # 缓存历史数据
             
             # 3.1 撮合待处理订单
             self._match_orders(bar)
@@ -110,24 +119,34 @@ class BacktestEngine:
                 "equity": equity
             })
             
+            # 3.3 日志记录
+            position = list(self.positions.values())[0] if self.positions else None
+            pos_qty = position.quantity if position else 0
+            self._logger.log_bar(bar, equity=equity, position_qty=pos_qty)
+            
             # 如果有回调，上报进度
             if on_progress:
                 on_progress(i + 1, total_bars, equity, bar.timestamp)
             
-            # 3.3 执行策略 on_bar
+            # 3.4 执行策略 on_bar
             try:
                 self._strategy.on_bar(bar)
             except Exception as e:
                 logger.error(ErrorMessage.BACKTEST_STRATEGY_ERROR.format(error=e))
-        
-        # 继续回测，不中断
+            
+            # 3.5 提交日志条目
+            self._logger.commit()
         
         # 4. 分析结果
-        return BacktestAnalyzer.analyze(
+        result = BacktestAnalyzer.analyze(
             self.config.initial_capital,
             self.equity_curve,
             self.trades
         )
+        # 附加 symbols 和 logs
+        result.symbols = list(self._symbols)
+        result.logs = self._logger.get_entries()
+        return result
     
     def _load_strategy(self, strategy_code: str) -> None:
         """加载策略代码
@@ -144,6 +163,9 @@ class BacktestEngine:
         self._strategy.get_position = self._api_get_position
         self._strategy.get_cash = self._api_get_cash
         self._strategy.get_equity = self._api_get_equity
+        # Step 10: 数据访问 API
+        self._strategy.get_bars = self._api_get_bars
+        self._strategy.get_bar = self._api_get_bar
     
     def _match_orders(self, bar: Bar) -> None:
         """撮合订单
@@ -328,6 +350,7 @@ class BacktestEngine:
             created_at=self._current_bar.timestamp if self._current_bar else 0
         )
         self.pending_orders.append(order)
+        self._symbols.add(symbol)  # 记录使用的交易对
         
         logger.debug(f"创建订单: {order.id} {symbol} {side} {quantity}")
         return order
@@ -346,7 +369,7 @@ class BacktestEngine:
             return None
         
         # 多头平仓：卖出
-        # 空头平仓：买入（暂不支持空头）
+        # 空头平仓：买入
         side = "SELL" if position.quantity > 0 else "BUY"
         return self._api_order(symbol, side, abs(position.quantity))
     
@@ -373,3 +396,28 @@ class BacktestEngine:
         if self._current_bar:
             return self._calculate_equity(self._current_bar)
         return self.cash
+    
+    def _api_get_bars(self, lookback: int = 100) -> List[Bar]:
+        """获取历史 K 线数据
+        
+        Args:
+            lookback: 返回最近 N 根 K 线
+            
+        Returns:
+            K 线列表（按时间升序）
+        """
+        return self._bar_history[-lookback:]
+    
+    def _api_get_bar(self, offset: int = -1) -> Optional[Bar]:
+        """获取指定偏移的 K 线
+        
+        Args:
+            offset: 偏移量（-1 表示前一根，-2 表示前两根）
+            
+        Returns:
+            Bar 对象，如果偏移超出范围返回 None
+        """
+        try:
+            return self._bar_history[offset]
+        except IndexError:
+            return None

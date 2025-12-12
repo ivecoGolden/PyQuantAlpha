@@ -123,11 +123,12 @@ class ErrorMessage:
     LLM_API_FAILED: Final[str] = "{provider} API 调用失败: {error}"
     LLM_PROVIDER_NOT_SUPPORTED: Final[str] = "不支持的 LLM 提供商: {provider}"
     LLM_PROVIDER_NOT_IMPLEMENTED: Final[str] = "{provider} 客户端尚未实现"
+    LLM_INVALID_JSON: Final[str] = "LLM 返回了无效的 JSON 格式: {error}"
     
     # ============ 策略校验相关 ============
     STRATEGY_CODE_EMPTY: Final[str] = "代码不能为空"
     STRATEGY_CLASS_NOT_FOUND: Final[str] = "未找到 Strategy 类定义"
-    STRATEGY_ONLY_ONE_CLASS: Final[str] = "只能定义一个类"
+    STRATEGY_ONLY_ONE_CLASS: Final[str] = "只能定义一个 Strategy 类"
     STRATEGY_WRONG_CLASS_NAME: Final[str] = "类名必须是 Strategy，而不是 {name}"
     STRATEGY_MISSING_INIT: Final[str] = "缺少 init() 方法"
     STRATEGY_MISSING_ON_BAR: Final[str] = "缺少 on_bar() 方法"

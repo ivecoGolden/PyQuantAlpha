@@ -74,22 +74,3 @@ class TestIsStrategyRequestFunction:
         # 普通聊天
         assert is_strategy_request("你好") is False
         assert is_strategy_request("今天天气") is False
-
-
-class TestGenerateEndpoint:
-    """/api/generate 端点测试"""
-    
-    def test_generate_endpoint_exists(self):
-        """测试端点存在"""
-        response = client.post("/api/generate", json={"prompt": "双均线策略"})
-        assert response.status_code != 404
-    
-    def test_generate_returns_code_and_explanation(self):
-        """测试返回代码和解读"""
-        response = client.post("/api/generate", json={"prompt": "双均线策略"})
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert "code" in data
-        assert "explanation" in data
-        assert "is_valid" in data

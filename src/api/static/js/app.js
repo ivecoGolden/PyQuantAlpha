@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Globals
     let currentCode = "";
+    let currentSymbol = "BTCUSDT";
 
     // Elements
     const chatForm = document.getElementById('chat-form');
@@ -14,7 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const sendBtn = document.getElementById('send-btn');
     const runBtn = document.getElementById('run-backtest-btn');
 
-    // ============ Chat & Generate ============
+    // ============ Chat ============
 
     chatForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -32,32 +33,42 @@ document.addEventListener('DOMContentLoaded', () => {
         UI.addLoadingMessage(msgId, '💭 正在想...');
 
         try {
-            // 使用新的 chat API（自动识别意图）
-            const res = await API.chat(message);
+            // 统一 API 调用，带上当前代码上下文
+            const res = await API.chat(message, currentCode || null);
 
             if (res.type === 'strategy') {
-                // 策略生成模式
-                UI.updateMessage(msgId, '⏳ 正在生成策略...');
-                UI.showStrategyLoading();
-
-                // 短暂延迟后更新消息（模拟加载效果）
-                await new Promise(r => setTimeout(r, 300));
-
+                // 策略生成/修改模式
                 if (res.is_valid) {
-                    UI.updateMessage(msgId, `✅ 策略生成成功！<br>已在右侧加载代码和解读。`);
+                    UI.updateMessage(msgId, `✅ 策略已生成！`);
                 } else {
                     UI.updateMessage(msgId, `⚠️ ${res.message}<br>代码已加载，但可能存在问题。`);
                 }
 
                 currentCode = res.content;
-                UI.updateStrategyView(res.content, res.explanation || "无解读");
+                // 先显示代码，解读暂为空
+                UI.updateStrategyView(res.content, "");
+
+                // 更新交易对显示（从策略中提取）
+                if (res.symbols && res.symbols.length > 0) {
+                    currentSymbol = res.symbols[0];
+                    document.getElementById('bt-symbol').textContent = currentSymbol;
+                    document.getElementById('chart-symbol').textContent = currentSymbol;
+                }
+
+                // 异步获取解读
+                API.explainStrategy(res.content).then(expRes => {
+                    UI.updateExplanation(expRes.explanation);
+                }).catch(err => {
+                    console.error("解读生成失败", err);
+                    UI.updateExplanation("⚠️ 自动解读生成失败，请稍后重试。");
+                });
+
             } else {
-                // 普通聊天模式 - 替换加载消息为回复
+                // 普通聊天模式
                 UI.updateMessage(msgId, res.content);
             }
 
         } catch (err) {
-            // 更新加载消息为错误
             UI.updateMessage(msgId, `❌ 发生错误: ${err.message}`);
         } finally {
             userInput.disabled = false;
@@ -84,8 +95,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Params
-        const symbol = document.getElementById('bt-symbol').value;
+        // Params - symbol 从 span 读取
+        const symbol = document.getElementById('bt-symbol').textContent;
         const interval = document.getElementById('bt-interval').value;
         const days = document.getElementById('bt-days').value;
 

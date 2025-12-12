@@ -34,12 +34,6 @@ def client():
          Bar(timestamp=1600000000000, open=100.0, high=110.0, low=90.0, close=105.0, volume=1000.0)
     ]
     
-    # 设置默认返回值: LLM (Tuple: code, explanation)
-    mock_llm.generate_strategy.return_value = ('''class Strategy:
-    def init(self): pass
-    def on_bar(self, bar): pass
-''', "# Mock 解读")
-    
     # 3. Create Client
     with TestClient(app) as test_client:
         yield test_client
@@ -105,24 +99,6 @@ class TestHistoricalKlinesEndpoint:
         data = response.json()
         assert len(data) >= 1
         mock_binance.get_historical_klines.assert_called_with("BTCUSDT", "4h", days=1)
-
-
-class TestGenerateEndpoint:
-    """策略生成端点测试 (Mock)"""
-    
-    def test_generate_returns_code(self, client):
-        response = client.post("/api/generate", json={"prompt": "EMA 金叉"})
-        assert response.status_code == 200, f"Response: {response.text}"
-        data = response.json()
-        assert "code" in data
-        assert "explanation" in data
-        assert "class Strategy" in data["code"]
-        
-        mock_llm.generate_strategy.assert_called()
-    
-    def test_generate_requires_prompt(self, client):
-        response = client.post("/api/generate", json={})
-        assert response.status_code == 422
 
 
 class TestBacktestEndpoint:

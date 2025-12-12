@@ -192,10 +192,9 @@
                         </div>
 
                         <!-- Inputs -->
-                        <div class="flex gap-2">
-                            <input type="text" value="BTCUSDT"
-                                class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs w-20 text-center uppercase focus:border-blue-500 outline-none"
-                                id="bt-symbol">
+                        <div class="flex gap-2 items-center">
+                            <span id="bt-symbol"
+                                class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-center uppercase text-blue-400 font-medium min-w-[60px]">BTCUSDT</span>
                             <select
                                 class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs focus:border-blue-500 outline-none"
                                 id="bt-interval">
@@ -255,6 +254,10 @@
 
                     <!-- Right: Chart -->
                     <div class="flex-1 p-4 relative bg-[#0b0e14]">
+                        <!-- Chart Title -->
+                        <div id="chart-title" class="absolute top-2 left-4 text-sm text-gray-400 font-medium z-10">
+                            <span id="chart-symbol">BTCUSDT</span> 净值曲线
+                        </div>
                         <canvas id="equity-chart"></canvas>
                         <!-- Chart Overlay for Empty State -->
                         <div id="chart-overlay"

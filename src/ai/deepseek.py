@@ -5,7 +5,6 @@ from openai import OpenAI
 from typing import Optional
 
 from .base import BaseLLMClient
-from .prompt import SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT
 from src.messages import ErrorMessage
 
 
@@ -16,7 +15,7 @@ class DeepSeekClient(BaseLLMClient):
     
     Example:
         >>> client = DeepSeekClient(api_key="your_key")
-        >>> code = client.generate_strategy("EMA 金叉做多")
+        >>> content, code, exp, symbols = client.unified_chat("写一个EMA策略")
     """
     
     BASE_URL = "https://api.deepseek.com"
@@ -41,62 +40,72 @@ class DeepSeekClient(BaseLLMClient):
         )
         self._model = model or self.DEFAULT_MODEL
         self._temperature = temperature
-    
-    def generate_strategy(
-        self,
-        user_prompt: str,
-        max_tokens: int = 2000
-    ) -> tuple[str, str]:
-        """生成策略代码
-        
-        Args:
-            user_prompt: 用户自然语言描述
-            max_tokens: 最大生成 token 数
-            
-        Returns:
-            (code, explanation) 生成的策略代码和解读
-            
-        Raises:
-            RuntimeError: API 调用失败
-        """
-        try:
-            response = self._client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=self._temperature,
-                max_tokens=max_tokens
-            )
-            content = response.choices[0].message.content
-            return self._extract_code_and_explanation(content)
-        except Exception as e:
-            raise RuntimeError(ErrorMessage.LLM_API_FAILED.format(provider="DeepSeek", error=str(e)))
 
-    def chat(
+
+    def unified_chat(
         self,
         message: str,
-        max_tokens: int = 1000
-    ) -> str:
-        """普通聊天
+        context_code: str | None = None,
+        max_tokens: int = 2000
+    ) -> "LLMResponse":
+        """统一上下文感知聊天
         
         Args:
             message: 用户消息
+            context_code: 当前策略代码（可选）
             max_tokens: 最大生成 token 数
             
         Returns:
-            AI 回复
-            
-        Raises:
-            RuntimeError: API 调用失败
+            LLMResponse 对象
         """
+        from .prompt import UNIFIED_SYSTEM_PROMPT
+        from .base import LLMResponse
+        
+        # 构建用户消息
+        if context_code:
+            user_message = f"""当前策略代码：
+```python
+{context_code}
+```
+
+用户请求：{message}"""
+        else:
+            user_message = message
+        
         try:
             response = self._client.chat.completions.create(
                 model=self._model,
                 messages=[
-                    {"role": "system", "content": CHAT_SYSTEM_PROMPT},
-                    {"role": "user", "content": message}
+                    {"role": "system", "content": UNIFIED_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_message}
+                ],
+                temperature=self._temperature,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"}
+            )
+            content = response.choices[0].message.content
+            
+            # 使用 JSON 解析
+            return self._parse_json_response(content)
+                
+        except Exception as e:
+            raise RuntimeError(ErrorMessage.LLM_API_FAILED.format(provider="DeepSeek", error=str(e)))
+
+
+    def explain_strategy(
+        self,
+        strategy_code: str,
+        max_tokens: int = 1000
+    ) -> str:
+        """生成策略解读"""
+        from .prompt import EXPLAIN_SYSTEM_PROMPT
+        
+        try:
+            response = self._client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": EXPLAIN_SYSTEM_PROMPT},
+                    {"role": "user", "content": f"请解读以下策略代码：\n\n```python\n{strategy_code}\n```"}
                 ],
                 temperature=self._temperature,
                 max_tokens=max_tokens
@@ -104,5 +113,3 @@ class DeepSeekClient(BaseLLMClient):
             return response.choices[0].message.content
         except Exception as e:
             raise RuntimeError(ErrorMessage.LLM_API_FAILED.format(provider="DeepSeek", error=str(e)))
-
-

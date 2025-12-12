@@ -195,6 +195,32 @@ class BacktestConfig:
 
 
 @dataclass
+class BacktestLogEntry:
+    """回测日志条目
+    
+    记录每一步的详细信息，便于调试和复盘。
+    
+    Attributes:
+        timestamp: 时间戳
+        bar_data: K线数据 (OHLCV)
+        indicators: 指标值 {"EMA20": 50000, "RSI": 45}
+        signals: 触发的信号 ["Golden Cross"]
+        orders: 本周期订单列表
+        position_qty: 当前持仓数量
+        equity: 当前净值
+        notes: 策略备注
+    """
+    timestamp: int
+    bar_data: dict = field(default_factory=dict)
+    indicators: dict = field(default_factory=dict)
+    signals: List[str] = field(default_factory=list)
+    orders: List[dict] = field(default_factory=list)
+    position_qty: float = 0.0
+    equity: float = 0.0
+    notes: str = ""
+
+
+@dataclass
 class BacktestResult:
     """回测结果
     
@@ -208,6 +234,8 @@ class BacktestResult:
         total_trades: 总交易数
         equity_curve: 净值曲线
         trades: 成交记录列表
+        symbols: 策略使用的交易对列表
+        logs: 详细日志条目
     """
     total_return: float
     annualized_return: float
@@ -218,3 +246,6 @@ class BacktestResult:
     total_trades: int
     equity_curve: List[dict] = field(default_factory=list)
     trades: List[Trade] = field(default_factory=list)
+    symbols: List[str] = field(default_factory=list)
+    logs: List[BacktestLogEntry] = field(default_factory=list)
+

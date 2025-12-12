@@ -2,13 +2,35 @@
 """LLM 客户端抽象基类"""
 
 from abc import ABC, abstractmethod
-from typing import Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+
+@dataclass
+class LLMResponse:
+    """LLM JSON 响应解析结果
+    
+    用于承接 LLM 返回的 JSON 格式响应。
+    
+    Attributes:
+        type: "chat" 或 "strategy"
+        content: 回复内容或策略说明
+        code: 策略代码（仅 type=strategy 时有值）
+        symbols: 涉及的交易对列表
+    """
+    type: str
+    content: str
+    code: str | None = None
+    symbols: list[str] = field(default_factory=list)
+    
+    @property
+    def is_strategy(self) -> bool:
+        """是否为策略响应"""
+        return self.type == "strategy" and self.code is not None
 
 
 @dataclass
 class ChatResult:
-    """聊天结果
+    """聊天结果（API 层使用）
     
     Attributes:
         type: "chat" 或 "strategy"
@@ -22,125 +44,89 @@ class ChatResult:
     is_valid: bool = True
 
 
-# 策略相关关键词
-STRATEGY_KEYWORDS = [
-    "策略", "均线", "EMA", "SMA", "RSI", "MACD", "布林", "ATR",
-    "买入", "卖出", "做多", "做空", "开仓", "平仓",
-    "金叉", "死叉", "突破", "回撤", "止损", "止盈",
-    "回测", "指标", "信号", "趋势", "震荡",
-    "strategy", "backtest", "indicator", "trade", "order"
-]
-
-
 class BaseLLMClient(ABC):
     """LLM 客户端抽象基类
     
     所有 LLM 客户端（DeepSeek, OpenAI, Claude 等）都应继承此类。
-    
-    Example:
-        >>> class ClaudeClient(BaseLLMClient):
-        ...     def generate_strategy(self, prompt: str) -> str:
-        ...         # Claude 特定实现
-        ...         pass
+    需实现 `explain_strategy` 和 `unified_chat` 两个抽象方法。
     """
     
     @abstractmethod
-    def generate_strategy(
+    def explain_strategy(
         self,
-        user_prompt: str,
-        max_tokens: int = 2000
+        strategy_code: str,
+        max_tokens: int = 1000
     ) -> str:
-        """生成策略代码
+        """生成策略解读
         
         Args:
-            user_prompt: 用户自然语言描述
+            strategy_code: 策略 Python 代码
             max_tokens: 最大生成 token 数
             
         Returns:
-            生成的 Python 策略代码
+            策略解读文本
         """
         pass
     
     @abstractmethod
-    def chat(
+    def unified_chat(
         self,
         message: str,
-        max_tokens: int = 1000
-    ) -> str:
-        """普通聊天
+        context_code: str | None = None,
+        max_tokens: int = 2000
+    ) -> LLMResponse:
+        """统一上下文感知聊天
         
         Args:
             message: 用户消息
+            context_code: 当前策略代码（可选）
             max_tokens: 最大生成 token 数
             
         Returns:
-            AI 回复
+            LLMResponse 对象
         """
         pass
     
-    def is_strategy_request(self, message: str) -> bool:
-        """判断是否为策略生成请求
+    def _parse_json_response(self, content: str) -> LLMResponse:
+        """解析 JSON 格式的 LLM 响应
         
         Args:
-            message: 用户消息
+            content: LLM 响应内容（JSON 字符串）
             
         Returns:
-            是否包含策略相关关键词
-        """
-        message_lower = message.lower()
-        return any(kw.lower() in message_lower for kw in STRATEGY_KEYWORDS)
-    
-    def _extract_code(self, content: str) -> str:
-        """从响应中提取代码块
-        
-        子类可重写此方法以适应不同模型的输出格式。
-        
-        Args:
-            content: LLM 响应内容
+            LLMResponse 对象
             
-        Returns:
-            提取的代码字符串
+        Raises:
+            ValueError: JSON 解析失败
         """
-        if content is None:
-            return ""
+        import json
+        from src.messages import ErrorMessage
         
-        # 处理 markdown 代码块
-        if "```python" in content:
-            start = content.find("```python") + 9
-            end = content.find("```", start)
-            if end > start:
-                return content[start:end].strip()
-        elif "```" in content:
-            start = content.find("```") + 3
-            end = content.find("```", start)
-            if end > start:
-                return content[start:end].strip()
-        
-        return content.strip()
-
-    def _extract_code_and_explanation(self, content: str) -> tuple[str, str]:
-        """提取代码和解读
-        
-        Returns:
-            (code, explanation)
-        """
-        code = self._extract_code(content)
-        explanation = "暂无解读"
-        
-        # 尝试提取 explanation 块
-        if "```explanation" in content:
-            start = content.find("```explanation") + 14
-            end = content.find("```", start)
-            if end > start:
-                explanation = content[start:end].strip()
-        else:
-            # 如果没有明确标签，移除代码块后剩余部分作为解读
-            explanation = content.replace(f"```python\n{code}\n```", "").replace(f"```\n{code}\n```", "").strip()
-            # 清理可能的剩余反引号
-            explanation = explanation.replace("```", "").strip()
+        # 清理 markdown code block 标记
+        json_str = content.strip()
+        if json_str.startswith("```json"):
+            json_str = json_str[7:]
+        elif json_str.startswith("```"):
+            json_str = json_str[3:]
             
-        if not explanation:
-            explanation = "AI 未提供详细解读。"
-            
-        return code, explanation
-
+        if json_str.endswith("```"):
+            json_str = json_str[:-3]
+        
+        json_str = json_str.strip()
+        
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            raise ValueError(ErrorMessage.LLM_INVALID_JSON.format(error=str(e)))
+        
+        msg_type = data.get("type", "chat")
+        msg_content = data.get("content", "")
+        symbols = data.get("symbols", [])
+        code = data.get("code") if msg_type == "strategy" else None
+        
+        return LLMResponse(
+            type=msg_type,
+            content=msg_content,
+            code=code,
+            symbols=symbols
+        )

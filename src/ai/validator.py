@@ -2,7 +2,6 @@
 """策略代码安全校验"""
 
 import ast
-from typing import Tuple
 
 from src.messages import ErrorMessage
 
@@ -68,7 +67,7 @@ def _collect_defined_names(tree: ast.Module) -> set:
 
 
 
-def validate_strategy_code(code: str) -> Tuple[bool, str]:
+def validate_strategy_code(code: str) -> tuple[bool, str]:
     """验证策略代码安全性
     
     Args:
@@ -112,13 +111,13 @@ def validate_strategy_code(code: str) -> Tuple[bool, str]:
     if "on_bar" not in methods:
         return False, ErrorMessage.STRATEGY_MISSING_ON_BAR
     
-    # 4. 检查禁止的节点
+    # 5. 检查禁止的节点
     for node in ast.walk(tree):
         if type(node) in FORBIDDEN_NODES:
             node_name = type(node).__name__
             return False, ErrorMessage.STRATEGY_FORBIDDEN_NODE.format(node=node_name)
     
-    # 5. 检查禁止的函数调用
+    # 6. 检查禁止的函数调用
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name):

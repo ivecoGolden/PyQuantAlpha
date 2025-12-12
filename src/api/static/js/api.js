@@ -5,40 +5,26 @@
 
 const API = {
     /**
-     * 智能聊天（自动识别意图）
+     * 统一上下文感知聊天
      * @param {string} message 用户消息
+     * @param {string|null} contextCode 当前策略代码（可选）
      * @returns {Promise<{type: string, content: string, explanation: string, is_valid: bool}>}
      */
-    async chat(message) {
+    async chat(message, contextCode = null) {
+        const body = { message };
+        if (contextCode) {
+            body.context_code = contextCode;
+        }
+
         const res = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message })
+            body: JSON.stringify(body)
         });
 
         if (!res.ok) {
             const err = await res.json();
             throw new Error(err.detail || '请求失败');
-        }
-
-        return await res.json();
-    },
-
-    /**
-     * 生成策略（直接生成，不判断意图）
-     * @param {string} prompt 用户提示词
-     * @returns {Promise<{code: string, explanation: string, is_valid: bool}>}
-     */
-    async generateStrategy(prompt) {
-        const res = await fetch('/api/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt })
-        });
-
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.detail || '生成失败');
         }
 
         return await res.json();
@@ -77,6 +63,26 @@ const API = {
      */
     getStreamUrl(taskId) {
         return `/api/backtest/stream/${taskId}`;
+    },
+
+    /**
+     * 生成策略解读
+     * @param {string} code 策略代码
+     * @returns {Promise<{explanation: string}>}
+     */
+    async explainStrategy(code) {
+        const res = await fetch('/api/explain', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || '解读生成失败');
+        }
+
+        return await res.json();
     }
 };
 

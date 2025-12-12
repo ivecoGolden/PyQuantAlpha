@@ -197,12 +197,16 @@ const UI = {
 
         // 更新代码
         const codeEl = document.getElementById('code-display');
+
+        // 重置 class 以确保 highlight.js 能重新识别 (移除 'hljs' 等 class，保留 'language-python')
+        codeEl.className = 'language-python';
         codeEl.textContent = code;
+
+        // 重新应用高亮
         hljs.highlightElement(codeEl);
 
         // 更新解读
-        const expEl = document.getElementById('explanation-display');
-        expEl.innerHTML = marked.parse(explanation);
+        this.updateExplanation(explanation || '<i>正在生成策略解读...</i>');
 
         // 切换到代码 Tab
         this.switchTab('code');
@@ -211,6 +215,18 @@ const UI = {
         document.getElementById('strategy-status').classList.remove('hidden');
         this.showCopyButton();
     },
+
+    /**
+     * 更新解读内容
+     * @param {string} explanation 
+     */
+    updateExplanation(explanation) {
+        const expEl = document.getElementById('explanation-display');
+        expEl.innerHTML = marked.parse(explanation);
+    },
+
+
+
 
     /**
      * 绑定复制按钮
@@ -329,6 +345,22 @@ const UI = {
         document.getElementById('metric-sharpe').textContent = formatNum(data.sharpe_ratio);
         // 如果后端返回 0 但实际上是一次交易都没做，也可以考虑显示 --，但这里遵循数据
         document.getElementById('metric-winrate').textContent = formatPercent(data.win_rate);
+
+        // 更新图表标题中的交易对
+        if (data.symbols && data.symbols.length > 0) {
+            this.setChartSymbol(data.symbols[0]);
+        }
+    },
+
+    /**
+     * 设置图表标题中的交易对
+     * @param {string} symbol 交易对名称
+     */
+    setChartSymbol(symbol) {
+        const el = document.getElementById('chart-symbol');
+        if (el) {
+            el.textContent = symbol || 'BTCUSDT';
+        }
     }
 };
 
