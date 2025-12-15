@@ -15,43 +15,43 @@ graph TD
 
     %% 前端层
     subgraph Frontend [前端交互层]
-        UI[Web UI (HTML/CSS)]:::front
-        JS[App logic (app.js / api.js)]:::front
+        UI["Web UI (HTML/CSS)"]:::front
+        JS["应用逻辑 (app.js / api.js)"]:::front
     end
 
     %% API 层
     subgraph API [API 服务层]
-        FastAPI[FastAPI Main]:::api
-        Route_Strat[Strategy Router]:::api
-        Route_Klines[Klines Router]:::api
-        SSE[SSE Stream]:::api
+        FastAPI["FastAPI 主程序"]:::api
+        Route_Strat["策略路由 (Strategy Router)"]:::api
+        Route_Klines["K线路由 (Klines Router)"]:::api
+        SSE["SSE 实时流"]:::api
     end
 
     %% AI 核心
     subgraph AICore [AI 核心模块]
-        Factory[LLM Factory]:::ai
-        Client[LLM Client (DeepSeek/OpenAI)]:::ai
-        Prompt[Prompt Template]:::ai
-        Validator[Code Validator (AST)]:::ai
+        Factory["LLM 工厂"]:::ai
+        Client["LLM 客户端 (DeepSeek/OpenAI)"]:::ai
+        Prompt["Prompt 模板"]:::ai
+        Validator["代码校验器 (AST)"]:::ai
     end
 
     %% 回测引擎
     subgraph Backtest [回测引擎模块]
-        Manager[Backtest Manager (Async)]:::backtest
-        Engine[Backtest Engine (Core)]:::backtest
-        Analyzer[Analyzer (Metrics)]:::backtest
-        Logger[Backtest Logger]:::backtest
-        Models[Data Models (Order/Trade)]:::backtest
+        Manager["回测管理器 (异步)"]:::backtest
+        Engine["回测引擎 (核心)"]:::backtest
+        Analyzer["分析器 (指标)"]:::backtest
+        Logger["回测日志"]:::backtest
+        Models["数据模型 (订单/交易)"]:::backtest
     end
 
     %% 数据层
     subgraph Data [数据服务层]
-        Binance[Binance Client]:::data
-        Bar[Bar Data Model]:::data
+        Binance["Binance 客户端"]:::data
+        Bar["K线数据模型"]:::data
     end
 
     %% 关系流向
-    UI -->|User Action| JS
+    UI -->|用户操作| JS
     JS -->|REST API| FastAPI
     JS -->|EventStream| SSE
 
@@ -59,23 +59,23 @@ graph TD
     FastAPI --> Route_Klines
 
     %% 策略生成流
-    Route_Strat -->|Create| Factory
-    Factory -->|Return| Client
-    Client -->|Use| Prompt
-    Route_Strat -->|Validate Code| Validator
+    Route_Strat -->|创建| Factory
+    Factory -->|返回| Client
+    Client -->|使用| Prompt
+    Route_Strat -->|校验代码| Validator
 
     %% 回测流
-    Route_Strat -->|Start Task| Manager
-    Manager -->|Stream Events| SSE
-    Manager -->|Run| Engine
-    Engine -->|Record| Logger
-    Engine -->|Calculate| Analyzer
-    Engine -->|Uses| Models
+    Route_Strat -->|启动任务| Manager
+    Manager -->|事件流| SSE
+    Manager -->|运行| Engine
+    Engine -->|记录| Logger
+    Engine -->|计算| Analyzer
+    Engine -->|使用| Models
 
     %% 数据流
     Route_Klines --> Binance
-    Engine -->|Fetch History| Binance
-    Binance -->|Return| Bar
+    Engine -->|获取历史数据| Binance
+    Binance -->|返回| Bar
 ```
 
 ---
@@ -86,50 +86,50 @@ graph TD
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant API as API (Strategy Router)
-    participant LLM as LLM Client
-    participant Val as Validator
+    participant User as 用户
+    participant API as API (策略路由)
+    participant LLM as LLM 客户端
+    participant Val as 校验器
 
     User->>API: POST /chat (prompt="双均线策略")
     API->>LLM: unified_chat(prompt)
     LLM-->>API: LLMResponse (JSON)
     
-    alt is_strategy?
+    alt is_strategy? (是策略?)
         API->>Val: validate_strategy_code(code)
         Val-->>API: (is_valid, msg)
     end
 
-    API-->>User: ChatResponse (Code + Explanation)
+    API-->>User: ChatResponse (代码 + 解读)
 ```
 
 ### 2. 回测执行流程 (Backtest Execution)
 
 ```mermaid
 sequenceDiagram
-    participant User
+    participant User as 用户
     participant API as API
-    participant Mgr as Backtest Manager
-    participant Eng as Backtest Engine
-    participant Bin as Binance Client
+    participant Mgr as 回测管理器
+    participant Eng as 回测引擎
+    participant Bin as Binance 客户端
 
     User->>API: POST /backtest/run (code, symbol, days)
     API->>Val: 校验代码安全
     API->>Bin: get_historical_klines()
-    Bin-->>API: K-Line Data
+    Bin-->>API: K线数据
     API->>Mgr: start_backtest(code, data)
     Mgr-->>API: task_id
     API-->>User: {task_id}
 
-    par Async Execution
+    par Async Execution (异步执行)
         Mgr->>Eng: engine.run()
-        loop Every Bar
+        loop Every Bar (每根 K 线)
             Eng->>Eng: on_bar()
             Eng->>Eng: _match_orders()
             Eng->>Mgr: Callback(progress)
         end
         Eng-->>Mgr: BacktestResult
-    and SSE Stream
+    and SSE Stream (SSE 实时流)
         User->>API: GET /backtest/stream/{task_id}
         API->>Mgr: stream_events()
         Mgr-->>User: event: progress
