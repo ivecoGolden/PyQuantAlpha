@@ -5,7 +5,7 @@
 PyQuantAlpha 是一个基于 FastAPI 的 AI 驱动量化回测平台。核心架构分为 **前端交互层**、**API 服务层**、**AI 核心层**、**回测引擎层** 和 **数据服务层**。
 
 ```mermaid
-graph TD
+graph LR
     %% 样式定义 - 使用高对比度颜色搭配白色文字
     classDef front fill:#1976D2,stroke:#0D47A1,stroke-width:2px,color:white;
     classDef api fill:#F57C00,stroke:#E65100,stroke-width:2px,color:white;
@@ -13,69 +13,79 @@ graph TD
     classDef backtest fill:#388E3C,stroke:#1B5E20,stroke-width:2px,color:white;
     classDef data fill:#546E7A,stroke:#263238,stroke-width:2px,color:white;
 
-    %% 前端层
+    %% 前端层 (左侧入口)
     subgraph Frontend [前端交互层]
+        direction TB
         UI["网页前端 (HTML/CSS)"]:::front
         JS["应用逻辑 (Vue/JS)"]:::front
+        UI -->|用户操作| JS
     end
 
-    %% API 层
+    %% API 层 (中间网关)
     subgraph API [API 服务层]
+        direction TB
         FastAPI["FastAPI 主程序"]:::api
         Route_Strat["策略接口路由"]:::api
         Route_Klines["行情接口路由"]:::api
         SSE["实时消息流 (SSE)"]:::api
+        
+        FastAPI --> Route_Strat
+        FastAPI --> Route_Klines
     end
 
-    %% AI 核心
-    subgraph AICore [AI 核心模块]
-        Factory["LLM 工厂类"]:::ai
-        Client["AI 客户端 (DeepSeek/OpenAI)"]:::ai
-        Prompt["提示词模板"]:::ai
-        Validator["安全校验器 (AST)"]:::ai
+    %% 核心业务模块 (右侧并行)
+    subgraph Core [核心业务模块]
+        direction TB
+        
+        %% AI 核心
+        subgraph AICore [AI 核心模块]
+            direction TB
+            Factory["LLM 工厂类"]:::ai
+            Client["AI 客户端"]:::ai
+            Validator["安全校验器"]:::ai
+            
+            Factory -->Client
+        end
+
+        %% 回测引擎
+        subgraph Backtest [回测引擎模块]
+            direction TB
+            Manager["回测管理器 (异步)"]:::backtest
+            Engine["回测核心引擎"]:::backtest
+            Logger["回测日志"]:::backtest
+            
+            Manager -->|启动| Engine
+            Engine --> Logger
+        end
     end
 
-    %% 回测引擎
-    subgraph Backtest [回测引擎模块]
-        Manager["回测任务管理器 (异步)"]:::backtest
-        Engine["回测核心引擎"]:::backtest
-        Analyzer["绩效分析器"]:::backtest
-        Logger["回测日志"]:::backtest
-        Models["数据模型 (订单/交易)"]:::backtest
-    end
-
-    %% 数据层
+    %% 数据层 (底层支撑)
     subgraph Data [数据服务层]
-        Binance["交易所客户端 (Binance)"]:::data
-        Bar["K线数据结构"]:::data
+        Binance["交易所客户端"]:::data
+        Bar["K线数据"]:::data
+        Binance -.-> Bar
     end
 
-    %% 关系流向
-    UI -->|用户操作| JS
-    JS -->|REST API 请求| FastAPI
-    JS -->|监听事件| SSE
+    %% 跨层连接
+    JS -->|REST API| FastAPI
+    JS -->|EventStream| SSE
 
-    FastAPI --> Route_Strat
-    FastAPI --> Route_Klines
-
-    %% 策略生成流
-    Route_Strat -->|创建实例| Factory
-    Factory -->|返回| Client
-    Client -->|调用| Prompt
-    Route_Strat -->|代码安全检查| Validator
-
-    %% 回测流
-    Route_Strat -->|提交任务| Manager
-    Manager -->|推送进度| SSE
-    Manager -->|执行回测| Engine
-    Engine -->|记录流水| Logger
-    Engine -->|计算指标| Analyzer
-    Engine -->|更新状态| Models
-
-    %% 数据流
+    %% 路由分发
+    Route_Strat -->|创建| Factory
+    Route_Strat -->|校验| Validator
+    Route_Strat -->|启动任务| Manager
+    
     Route_Klines --> Binance
-    Engine -->|请求历史数据| Binance
-    Binance -->|返回数据| Bar
+    
+    %% 流程连接
+    Client -->|返回代码| Validator
+    Manager -->|推送事件| SSE
+    Engine -->|请求数据| Binance
+
+    %% 布局调整
+    Frontend --> API
+    API --> Core
+    Core --> Data
 ```
 
 ---
