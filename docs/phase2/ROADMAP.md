@@ -23,19 +23,21 @@ Phase 2 的核心目标是将 PyQuantAlpha 从一个 "AI 演示工具" 升级为
     - 在 API 返回的 JSON 中包含 `markers` 数组（买卖点）。
     - 前端 Highcharts 绘制 Buy(绿色三角形) 和 Sell(红色三角形) 标记。
 
-### 2.2 [P1] 高级订单类型 (Advanced Order Types)
-**参考**：Backtrader 的 `Stop` 和 `StopLimit` 逻辑。
-**现状**：仅支持市价和限价，止损需手动模拟。
-**目标**：实现服务器端风控订单。
+### 2.2 [P1] 交易核心重构 (Core Trading Engine)
+**参考**：Backtrader 的 `Broker` 抽象与完整订单生命周期。
+**现状**：撮合逻辑耦合在 Engine 中，仅支持市价/限价，状态简单。
+**目标**：解耦交易执行层，支持复杂订单与更真实的资金管理。
 
-- **[T4] 止损单基础架构**
-    - 扩展 `OrderType` 枚举：`STOP`, `STOP_LIMIT`。
-    - 订单模型增加 `trigger_price` (触发价) 字段。
-- **[T5] 撮合引擎升级 (Trigger Logic)**
-    - 在 `_match_orders` 中增加触发检查：
-        - `BUY STOP`: `High >= trigger` -> 触发为市价/限价买单。
-        - `SELL STOP`: `Low <= trigger` -> 触发为市价/限价卖单。
-    - *借鉴 Backtrader*：严格区分 "触发 (Triggered)" 和 "成交 (Executed)" 两个状态。
+- **[T4] 引入 Broker 抽象层**
+    - **架构升级**：从 `Engine` 中剥离交易逻辑，建立 `BacktestBroker` 类。
+    - **职责**：接管资金 (`cash`, `value`)、持仓 (`positions`) 管理及订单撮合 (`_match_orders`)。
+    - **意义**：为未来对接实盘交易（Live Trading）预留接口，实现逻辑解耦。
+- **[T5] 完善订单生命周期**
+    - **状态机升级**：引入完整状态 `Submitted` -> `Accepted` -> `Partial` -> `Completed` / `Canceled` / `Rejected` (资金不足)。
+    - **风控订单**：实现 `STOP` (止损) 和 `STOP_LIMIT` (止损限价) 订单。
+    - **触发机制**：借鉴 BT，严格区分 "Triggered" (触发) 与 "Executed" (成交)。
+- **[T6] 资金管理预留 (Sizer)**
+    - 在 `Order` 接口中预留自动计算数量的逻辑（如 `size=None` 时按资金百分比下单），为未来引入 `Sizer` 模块做准备。
 
 ### 2.3 [P2] 多资产回测引擎 (Multi-Asset Core)
 **参考**：Backtrader 的 `Cerebro` 数据对齐与 `Lines` 索引。
@@ -57,7 +59,7 @@ Phase 2 的核心目标是将 PyQuantAlpha 从一个 "AI 演示工具" 升级为
 ## 3. 实施阶段 (Implementation Phasing)
 
 1.  **Phase 2.1 (Logging)**: 不破坏现有引擎结构，仅增强 `Observer` 和 `Callback`。
-2.  **Phase 2.2 (Orders)**: 修改 `_match_orders`，引入新的订单状态机。
+2.  **Phase 2.2 (Core Trading)**: 提取 `BacktestBroker`，实现新的订单状态机与止损单逻辑。
 3.  **Phase 2.3 (Multi-Asset)**: 较大的底层重构，需确保前两步的单元测试覆盖充分，以防止回滚。
 
 ---

@@ -1,5 +1,19 @@
 # src/backtest/engine.py
-"""回测引擎核心"""
+"""
+回测引擎核心
+
+事件驱动的回测引擎，模拟真实交易流程：
+1. 加载策略代码 -> 注入交易 API
+2. 遍历 K 线 -> 撮合订单 -> 更新持仓
+3. 策略 on_bar 执行 -> 收集日志
+4. 分析绩效 -> 返回结果
+
+支持功能：
+- 多空交易（开多/开空/平仓）
+- 手续费、滑点模拟
+- notify_order/notify_trade 回调钩子
+- 历史数据访问 (get_bars/get_bar)
+"""
 
 import uuid
 import logging
@@ -60,10 +74,10 @@ class BacktestEngine:
         self._order_counter = 0
         self._trade_counter = 0
         
-        # Step 10: 新增功能
-        self._bar_history: List[Bar] = []  # 历史数据缓存
-        self._symbols: set = set()  # 使用的交易对
-        self._logger = BacktestLogger(enabled=self.enable_logging)  # 日志记录器
+        # 数据访问支持
+        self._bar_history: List[Bar] = []  # K 线历史缓存（供策略回溯）
+        self._symbols: set = set()         # 策略使用的交易对
+        self._logger = BacktestLogger(enabled=self.enable_logging)
     
     def run(
         self,
@@ -163,9 +177,16 @@ class BacktestEngine:
         self._strategy.get_position = self._api_get_position
         self._strategy.get_cash = self._api_get_cash
         self._strategy.get_equity = self._api_get_equity
-        # Step 10: 数据访问 API
+        # 数据访问 API（供策略回溯历史数据）
         self._strategy.get_bars = self._api_get_bars
         self._strategy.get_bar = self._api_get_bar
+        
+        # Phase 2.1: 策略回调钩子
+        # 如果策略没有定义这些方法，则使用空占位
+        if not hasattr(self._strategy, 'notify_order'):
+            self._strategy.notify_order = lambda order: None
+        if not hasattr(self._strategy, 'notify_trade'):
+            self._strategy.notify_trade = lambda trade: None
     
     def _match_orders(self, bar: Bar) -> None:
         """撮合订单
@@ -189,15 +210,20 @@ class BacktestEngine:
             
             # 检查资金/持仓是否充足
             if order.side == OrderSide.BUY:
-                # 判断是平空还是开多
                 position = self.positions.get(order.symbol)
                 if position and position.quantity < 0:
-                    # 平空仓：返还保证金 + 计算盈亏
+                    # 平空仓：空头买回
+                    # 逻辑：开空时收到了卖出款项（已在开空时加到 cash），平空时支付买入成本
+                    # 盈亏 = (开空价 - 买回价) * 数量，这会在 position.update 中计算
                     close_qty = min(order.quantity, abs(position.quantity))
-                    # 平空亏损 = close_qty * (buy_price - avg_price)
-                    # 这会在 position.update 中计算
-                    # 需要足够的现金来买入
-                    required_cash = fill_price * order.quantity + fee
+                    open_qty = order.quantity - close_qty  # 如果买入量 > 空头持仓量，则开多
+                    
+                    # 平空部分：支付买回成本 + 手续费
+                    close_cost = fill_price * close_qty + fee * (close_qty / order.quantity)
+                    # 开多部分（如有）：支付买入成本 + 手续费
+                    open_cost = fill_price * open_qty + fee * (open_qty / order.quantity) if open_qty > 0 else 0
+                    
+                    required_cash = close_cost + open_cost
                     if required_cash > self.cash:
                         order.status = OrderStatus.REJECTED
                         order.error_msg = ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
@@ -207,7 +233,7 @@ class BacktestEngine:
                         continue
                     self.cash -= required_cash
                 else:
-                    # 开多仓或加仓
+                    # 开多仓或加仓（无空头持仓）
                     required_cash = fill_price * order.quantity + fee
                     if required_cash > self.cash:
                         order.status = OrderStatus.REJECTED
@@ -216,7 +242,6 @@ class BacktestEngine:
                             order_id=order.id, reason=ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
                         ))
                         continue
-                    # 扣除资金
                     self.cash -= required_cash
             else:
                 # SELL: 平多或开空
@@ -245,8 +270,10 @@ class BacktestEngine:
                             continue
                         # 冻结保证金（不扣除，只是锁定）
                 else:
-                    # 无多头持仓：直接开空（需要保证金）
-                    margin_required = fill_price * order.quantity + fee  # 100% 保证金
+                    # 无多头持仓：直接开空
+                    # 开空逻辑：卖出借入的资产，收到卖出款项
+                    # 检查保证金（简化为100%保证金）
+                    margin_required = fill_price * order.quantity + fee
                     if margin_required > self.cash:
                         order.status = OrderStatus.REJECTED
                         order.error_msg = ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
@@ -254,9 +281,9 @@ class BacktestEngine:
                             order_id=order.id, reason="开空保证金不足"
                         ))
                         continue
-                    # 注意：开空不扣除现金，只是冻结保证金概念
-                    # 但为了简化，我们扣除手续费
-                    self.cash -= fee
+                    # 收到卖出款项（减去手续费）
+                    proceeds = fill_price * order.quantity - fee
+                    self.cash += proceeds
             
             # 更新持仓
             position = self.positions.setdefault(order.symbol, Position(order.symbol))
@@ -283,6 +310,25 @@ class BacktestEngine:
             )
             self.trades.append(trade)
             filled_orders.append(order)
+            
+            # Phase 2.1: 触发策略回调 notify_order
+            try:
+                self._strategy.notify_order(order)
+            except Exception as e:
+                logger.warning(f"notify_order 回调异常: {e}")
+            
+            # Phase 2.1: 记录订单事件到日志（用于前端可视化）
+            current_equity = self._calculate_equity(bar)
+            self._logger.log_order_event(order, current_equity)
+            
+            # Phase 2.1: 如果平仓产生盈亏，触发 notify_trade
+            if pnl != 0:
+                try:
+                    self._strategy.notify_trade(trade)
+                except Exception as e:
+                    logger.warning(f"notify_trade 回调异常: {e}")
+                # 记录交易事件
+                self._logger.log_trade_event(trade)
             
             logger.debug(
                 f"成交: {order.symbol} {order.side.value} "

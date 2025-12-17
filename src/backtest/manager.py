@@ -1,5 +1,13 @@
 # src/backtest/manager.py
-"""回测任务管理器"""
+"""
+回测任务管理器
+
+异步回测任务管理，支持 SSE 实时进度推送：
+- 任务队列管理 (asyncio.Queue)
+- 线程安全的进度回调
+- SSE 事件流生成
+- 绩效数据 + 可视化数据打包返回
+"""
 import asyncio
 import json
 import logging
@@ -164,7 +172,13 @@ class BacktestManager:
                             "pnl": t.pnl,
                             "timestamp": t.timestamp
                         } for t in result.trades
-                    ]
+                    ],
+                    # Phase 2.1: 可视化数据
+                    "visuals": {
+                        "markers": engine._logger.markers,
+                        "logs": engine._logger.order_logs,
+                        "trades": engine._logger.trade_logs
+                    }
                 }
             })
             

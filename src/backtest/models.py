@@ -1,5 +1,19 @@
 # src/backtest/models.py
-"""回测数据模型"""
+"""
+回测数据模型
+
+核心模型：
+- Order: 订单（父压、限价单）
+- Trade: 成交记录
+- Position: 持仓（支持多/空）
+- BacktestConfig: 回测配置
+- BacktestResult: 回测结果
+
+枚举类型：
+- OrderSide: BUY / SELL
+- OrderType: MARKET / LIMIT
+- OrderStatus: PENDING / FILLED / CANCELLED / REJECTED
+"""
 
 from enum import Enum
 from dataclasses import dataclass, field

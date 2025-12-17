@@ -300,11 +300,11 @@ const UI = {
         document.querySelectorAll('.tab-btn').forEach(btn => {
             const isTarget = btn.dataset.tab === tabName;
             if (isTarget) {
-                btn.classList.add('text-blue-400', 'border-blue-400');
-                btn.classList.remove('text-gray-400', 'border-transparent');
+                btn.classList.add('text-blue-400', 'bg-gray-950', 'border-t', 'border-l', 'border-r', 'border-gray-700', '-mb-px', 'active');
+                btn.classList.remove('text-gray-400');
             } else {
-                btn.classList.remove('text-blue-400', 'border-blue-400');
-                btn.classList.add('text-gray-400', 'border-transparent');
+                btn.classList.remove('text-blue-400', 'bg-gray-950', 'border-t', 'border-l', 'border-r', 'border-gray-700', '-mb-px', 'active');
+                btn.classList.add('text-gray-400');
             }
         });
 
@@ -312,7 +312,10 @@ const UI = {
         document.querySelectorAll('.tab-content').forEach(el => {
             el.classList.add('hidden');
         });
-        document.getElementById(`view-${tabName}`).classList.remove('hidden');
+        const targetView = document.getElementById(`view-${tabName}`);
+        if (targetView) {
+            targetView.classList.remove('hidden');
+        }
     },
 
     /**
@@ -361,6 +364,106 @@ const UI = {
         if (el) {
             el.textContent = symbol || 'BTCUSDT';
         }
+    },
+
+    // ============ Phase 2.1: 可视化增强 ============
+
+    /**
+     * 渲染买卖标记到图表
+     * @param {Array} markers [{x: timestamp, y: equity, type: 'BUY'|'SELL', text: '...'}]
+     */
+    renderMarkers(markers) {
+        if (!this.chart || !markers || markers.length === 0) return;
+
+        // 移除旧的 markers dataset (如果存在)
+        if (this.chart.data.datasets.length > 1) {
+            this.chart.data.datasets.splice(1, 1);
+        }
+
+        // 转换 markers 为 Chart.js 格式
+        const markerData = markers.map(m => ({
+            x: new Date(m.x).toLocaleString('zh-CN', {
+                month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+            }),
+            y: m.y,
+            type: m.type,
+            text: m.text
+        }));
+
+        // 添加 Scatter dataset 作为标记层
+        this.chart.data.datasets.push({
+            type: 'scatter',
+            label: 'Trade Markers',
+            data: markerData.map(m => ({ x: m.x, y: m.y })),
+            pointStyle: (ctx) => {
+                const d = markerData[ctx.dataIndex];
+                return d && d.type === 'BUY' ? 'triangle' : 'rectRot';
+            },
+            backgroundColor: (ctx) => {
+                const d = markerData[ctx.dataIndex];
+                return d && d.type === 'BUY' ? '#22c55e' : '#ef4444';
+            },
+            pointRadius: 8,
+            pointHoverRadius: 10,
+            showLine: false
+        });
+
+        this.chart.update();
+    },
+
+    /**
+     * 渲染日志到页面 (如果有 logs 容器的话)
+     * @param {Array} logs [{time, level, msg}]
+     */
+    renderLogs(logs) {
+        // 如果页面有 logs 容器则渲染
+        const container = document.getElementById('panel-logs');
+        if (!container || !logs) return;
+
+        container.innerHTML = logs.map(log => `
+            <div class="text-xs py-1 border-b border-gray-800 ${log.level === 'TRADE' ? 'text-green-400' : 'text-gray-400'}">
+                <span class="text-gray-500">[${log.time}]</span> 
+                <span class="font-mono">${log.msg}</span>
+            </div>
+        `).join('');
+    },
+
+    /**
+     * 渲染交易明细表
+     * @param {Array} trades [{time, symbol, side, price, quantity, pnl, fee}]
+     */
+    renderTrades(trades) {
+        const container = document.getElementById('panel-trades');
+        if (!container || !trades) return;
+
+        if (trades.length === 0) {
+            container.innerHTML = '<p class="text-gray-500 text-sm p-2">暂无交易记录</p>';
+            return;
+        }
+
+        const rows = trades.map(t => {
+            const pnlClass = t.pnl >= 0 ? 'text-green-400' : 'text-red-400';
+            const pnlStr = t.pnl >= 0 ? `+${t.pnl.toFixed(2)}` : t.pnl.toFixed(2);
+            return `
+                <tr class="border-b border-gray-800 text-xs">
+                    <td class="py-1 px-2">${t.time}</td>
+                    <td class="py-1 px-2">${t.symbol}</td>
+                    <td class="py-1 px-2 ${t.side === 'BUY' ? 'text-green-400' : 'text-red-400'}">${t.side}</td>
+                    <td class="py-1 px-2">${t.price.toFixed(2)}</td>
+                    <td class="py-1 px-2">${t.quantity.toFixed(4)}</td>
+                    <td class="py-1 px-2 ${pnlClass}">${pnlStr}</td>
+                </tr>
+            `;
+        }).join('');
+
+        container.innerHTML = `
+            <table class="w-full text-left">
+                <thead class="text-gray-500 text-xs">
+                    <tr><th class="py-1 px-2">时间</th><th class="px-2">交易对</th><th class="px-2">方向</th><th class="px-2">价格</th><th class="px-2">数量</th><th class="px-2">盈亏</th></tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
     }
 };
 

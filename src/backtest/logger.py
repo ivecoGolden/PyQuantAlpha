@@ -1,7 +1,17 @@
 # src/backtest/logger.py
-"""回测日志系统
+"""
+回测日志系统
 
-提供详细的回测日志记录功能，便于策略调试和复盘。
+提供两类日志功能：
+
+1. **分步日志** (entries)
+   - 每根 K 线的指标、信号、订单、持仓
+   - 用于策略调试和复盘
+
+2. **可视化日志** (Phase 2.1)
+   - order_logs: 订单流水 [{time, level, msg}]
+   - trade_logs: 交易明细 [{time, symbol, pnl, ...}]
+   - markers: 图表标记点 [{x, y, type, text}]
 """
 
 import json
@@ -38,6 +48,11 @@ class BacktestLogger:
         self.enabled = enabled
         self.entries: List[BacktestLogEntry] = []
         self._current_entry: Optional[BacktestLogEntry] = None
+        
+        # Phase 2.1: 可视化数据收集
+        self.order_logs: List[dict] = []   # 订单流水
+        self.trade_logs: List[dict] = []   # 交易流水（含盈亏）
+        self.markers: List[dict] = []       # 买卖标记点
     
     def log_bar(
         self, 
@@ -130,6 +145,10 @@ class BacktestLogger:
         """清空日志"""
         self.entries.clear()
         self._current_entry = None
+        # Phase 2.1: 清空可视化数据
+        self.order_logs.clear()
+        self.trade_logs.clear()
+        self.markers.clear()
     
     def export_jsonl(self, filepath: str) -> None:
         """导出为 JSON Lines 格式
@@ -142,3 +161,63 @@ class BacktestLogger:
                 line = json.dumps(asdict(entry), ensure_ascii=False)
                 f.write(line + '\n')
         logger.info(f"日志已导出: {filepath} ({len(self.entries)} 条)")
+    
+    # ============ Phase 2.1: 可视化日志方法 ============
+    
+    def log_order_event(self, order, equity: float) -> None:
+        """记录订单事件（用于前端可视化）
+        
+        Args:
+            order: Order 对象
+            equity: 当前净值（用于 marker Y 坐标）
+        """
+        if not self.enabled:
+            return
+        
+        from datetime import datetime
+        time_str = datetime.fromtimestamp(order.created_at / 1000).strftime("%Y-%m-%d %H:%M:%S")
+        
+        self.order_logs.append({
+            "time": time_str,
+            "level": "ORDER",
+            "msg": f"{order.status.value}: {order.side.value} {order.symbol} {order.quantity:.4f} @ {order.filled_avg_price:.2f}"
+        })
+        
+        # 添加图表标记
+        self.markers.append({
+            "x": order.created_at,
+            "y": equity,
+            "type": order.side.value,
+            "text": f"{order.side.value} {order.quantity:.4f} @ {order.filled_avg_price:.2f}"
+        })
+    
+    def log_trade_event(self, trade) -> None:
+        """记录交易事件（平仓盈亏，用于前端可视化）
+        
+        Args:
+            trade: Trade 对象
+        """
+        if not self.enabled:
+            return
+        
+        from datetime import datetime
+        time_str = datetime.fromtimestamp(trade.timestamp / 1000).strftime("%Y-%m-%d %H:%M:%S")
+        
+        pnl_str = f"+{trade.pnl:.2f}" if trade.pnl >= 0 else f"{trade.pnl:.2f}"
+        
+        self.trade_logs.append({
+            "time": time_str,
+            "symbol": trade.symbol,
+            "side": trade.side.value,
+            "price": trade.price,
+            "quantity": trade.quantity,
+            "pnl": trade.pnl,
+            "fee": trade.fee
+        })
+        
+        self.order_logs.append({
+            "time": time_str,
+            "level": "TRADE",
+            "msg": f"平仓: {trade.symbol} PnL: {pnl_str}"
+        })
+

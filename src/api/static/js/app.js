@@ -2,6 +2,30 @@
  * Main Application Logic
  */
 
+// Phase 2.1: Logs/Trades Tab Switching
+function switchLogTab(tab) {
+    const logsPanel = document.getElementById('panel-logs');
+    const tradesPanel = document.getElementById('panel-trades');
+    const logsBtn = document.getElementById('tab-logs-btn');
+    const tradesBtn = document.getElementById('tab-trades-btn');
+
+    if (tab === 'logs') {
+        logsPanel.classList.remove('hidden');
+        tradesPanel.classList.add('hidden');
+        logsBtn.classList.replace('bg-gray-700', 'bg-blue-600');
+        logsBtn.classList.replace('text-gray-400', 'text-white');
+        tradesBtn.classList.replace('bg-blue-600', 'bg-gray-700');
+        tradesBtn.classList.replace('text-white', 'text-gray-400');
+    } else {
+        logsPanel.classList.add('hidden');
+        tradesPanel.classList.remove('hidden');
+        tradesBtn.classList.replace('bg-gray-700', 'bg-blue-600');
+        tradesBtn.classList.replace('text-gray-400', 'text-white');
+        logsBtn.classList.replace('bg-blue-600', 'bg-gray-700');
+        logsBtn.classList.replace('text-white', 'text-gray-400');
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     UI.init();
 
@@ -145,6 +169,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = JSON.parse(e.data); // BacktestResult
                 UI.updateProgress(100);
                 UI.updateMetrics(data); // { total_return, ... }
+
+                // Phase 2.1: 渲染可视化数据
+                if (data.visuals) {
+                    UI.renderMarkers(data.visuals.markers);
+                    UI.renderLogs(data.visuals.logs);
+                    UI.renderTrades(data.visuals.trades);
+                }
 
                 // 完整重绘图表以确保精确（如果之前是抽样）
                 // 这里暂略，直接使用流式数据

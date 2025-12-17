@@ -4,99 +4,98 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PyQuantAlpha - AI 量化助手</title>
+    <title>PyQuantAlpha - AI 量化策略平台</title>
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Marked.js (Markdown渲染) -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <!-- Highlight.js (代码高亮) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
-    <!-- Chart.js (图表) -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Highlight.js -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+
+    <!-- Marked.js for Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
     <style>
-        /* 自定义滚动条 */
+        /* Custom scrollbar */
         ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
+            width: 6px;
+            height: 6px;
         }
 
         ::-webkit-scrollbar-track {
-            background: #1f2937;
+            background: transparent;
         }
 
         ::-webkit-scrollbar-thumb {
-            background: #4b5563;
-            border-radius: 4px;
+            background: #374151;
+            border-radius: 3px;
         }
 
         ::-webkit-scrollbar-thumb:hover {
-            background: #6b7280;
+            background: #4b5563;
         }
 
+        /* Hide scrollbar for specific elements */
+        .scrollbar-none::-webkit-scrollbar {
+            display: none;
+        }
+
+        /* Code editor styling */
         .code-editor {
-            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-            line-height: 1.5;
+            font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+            line-height: 1.6;
         }
 
-        /* Markdown 样式 */
-        .prose pre {
-            background-color: #111827 !important;
-            margin: 0;
-            padding: 1rem;
-            border-radius: 0.5rem;
-        }
-
-        .prose code {
-            color: #e5e7eb;
-        }
-
+        /* Prose (Markdown) styling */
         .prose h1,
         .prose h2,
         .prose h3 {
-            color: #f3f4f6;
-            font-weight: 600;
-            margin-top: 1.5em;
-            margin-bottom: 0.5em;
+            color: #e5e7eb;
         }
 
-        .prose p {
-            margin-bottom: 1em;
-            color: #d1d5db;
+        .prose code {
+            background: #1f2937;
+            padding: 0.2em 0.4em;
+            border-radius: 4px;
         }
 
-        .prose ul {
-            list-style-type: disc;
+        .prose ul,
+        .prose ol {
             padding-left: 1.5em;
-            margin-bottom: 1em;
-            color: #d1d5db;
         }
 
-        .prose strong {
-            color: #f9fafb;
+        .tab-btn.active {
+            color: #60a5fa;
+            border-color: #3b82f6;
         }
     </style>
 </head>
 
-<body class="bg-gray-900 text-gray-100 h-screen flex flex-col overflow-hidden">
+<body class="bg-gray-950 text-gray-100 h-screen flex flex-col overflow-hidden antialiased">
 
-    <!-- Header -->
-    <header class="bg-gray-800 border-b border-gray-700 h-14 flex items-center px-6 justify-between flex-shrink-0">
-        <div class="flex items-center gap-2">
-            <i data-lucide="brain-circuit" class="text-blue-500 w-6 h-6"></i>
-            <h1 class="text-lg font-bold tracking-wide">PyQuant<span class="text-blue-500">Alpha</span></h1>
+    <!-- Top Nav -->
+    <nav class="h-12 border-b border-gray-800 bg-gray-900/50 flex items-center px-4 justify-between shrink-0">
+        <div class="flex items-center gap-3">
+            <div
+                class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                <i data-lucide="activity" class="w-5 h-5 text-white"></i>
+            </div>
+            <span class="font-bold text-lg">PyQuantAlpha</span>
+            <span class="text-xs text-gray-500 border border-gray-700 rounded px-1.5 py-0.5">v0.2.0</span>
         </div>
-        <div class="text-sm text-gray-400">
-            <span id="status-indicator" class="inline-block w-2 h-2 rounded-full bg-green-500 mr-1"></span>
-            System Ready
+        <div class="flex items-center gap-4">
+            <span class="text-xs text-gray-500">AI Quant Platform</span>
         </div>
-    </header>
+    </nav>
 
-    <!-- Main Content -->
     <main class="flex-1 flex overflow-hidden">
 
         <!-- Left Sidebar: Chat -->
@@ -136,139 +135,158 @@
             </div>
         </aside>
 
-        <!-- Right Workspace -->
+        <!-- Right Workspace: Tabbed View -->
         <div class="flex-1 flex flex-col bg-gray-950">
 
-            <!-- Upper: Strategy View (Code/Explanation) -->
-            <div class="h-3/5 border-b border-gray-700 flex flex-col">
-                <!-- Toolbar -->
-                <div class="h-10 border-b border-gray-800 bg-gray-900 flex items-center px-4 justify-between">
-                    <!-- Tabs -->
-                    <div class="flex gap-4 text-sm font-medium">
-                        <button
-                            class="text-blue-400 border-b-2 border-blue-400 pb-2 px-1 hover:text-blue-300 transition-colors tab-btn active"
-                            data-tab="code">策略代码</button>
-                        <button
-                            class="text-gray-400 border-b-2 border-transparent pb-2 px-1 hover:text-gray-200 transition-colors tab-btn"
-                            data-tab="explanation">AI 解读</button>
-                    </div>
-
-                    <!-- Code Actions -->
-                    <div class="flex items-center gap-3">
-                        <span id="strategy-status" class="text-xs text-gray-500 hidden">
-                            <i data-lucide="check-circle" class="w-3 h-3 inline mr-1"></i>已校验
-                        </span>
-                        <button id="copy-code-btn"
-                            class="hidden text-gray-400 hover:text-white p-1 rounded transition-colors" title="复制代码">
-                            <i data-lucide="copy" class="w-4 h-4"></i>
-                        </button>
-                    </div>
+            <!-- Tab Bar -->
+            <div class="h-12 border-b border-gray-800 bg-gray-900 flex items-center px-4 justify-between shrink-0">
+                <!-- Tabs -->
+                <div class="flex gap-1 text-sm font-medium">
+                    <button
+                        class="px-4 py-2 rounded-t text-blue-400 bg-gray-950 border-t border-l border-r border-gray-700 -mb-px tab-btn active"
+                        data-tab="code">📝 策略代码</button>
+                    <button class="px-4 py-2 rounded-t text-gray-400 hover:text-gray-200 transition-colors tab-btn"
+                        data-tab="explanation">💡 AI 解读</button>
+                    <button class="px-4 py-2 rounded-t text-gray-400 hover:text-gray-200 transition-colors tab-btn"
+                        data-tab="backtest">📊 回测结果</button>
                 </div>
 
-                <!-- Content Area -->
-                <div class="flex-1 overflow-hidden relative group">
-                    <!-- Code View -->
-                    <div id="view-code" class="absolute inset-0 overflow-auto p-4 bg-[#0d1117] tab-content">
-                        <pre><code class="language-python bg-transparent p-0 text-sm code-editor" id="code-display"># 暂时没有策略</code></pre>
-                    </div>
-                    <!-- Explanation View -->
-                    <div id="view-explanation"
-                        class="absolute inset-0 overflow-auto p-6 bg-gray-900 tab-content hidden">
-                        <div id="explanation-display" class="prose prose-invert max-w-none text-sm">
-                            <p class="text-gray-500 italic">暂无策略解读。</p>
-                        </div>
-                    </div>
+                <!-- Actions -->
+                <div class="flex items-center gap-3">
+                    <span id="strategy-status" class="text-xs text-gray-500 hidden">
+                        <i data-lucide="check-circle" class="w-3 h-3 inline mr-1"></i>已校验
+                    </span>
+                    <button id="copy-code-btn"
+                        class="hidden text-gray-400 hover:text-white p-1 rounded transition-colors" title="复制代码">
+                        <i data-lucide="copy" class="w-4 h-4"></i>
+                    </button>
                 </div>
             </div>
 
-            <!-- Lower: Backtest Panel -->
-            <div class="flex-1 flex flex-col">
-                <!-- Control Bar -->
-                <div class="h-14 border-b border-gray-800 bg-gray-900 flex items-center px-4 gap-4 justify-between">
-                    <div class="flex items-center gap-4">
-                        <div class="flex items-center gap-2">
-                            <i data-lucide="settings-2" class="w-4 h-4 text-gray-400"></i>
-                            <span class="text-sm font-semibold text-gray-300">回测配置</span>
-                        </div>
+            <!-- Tab Content Area -->
+            <div class="flex-1 overflow-hidden relative">
 
-                        <!-- Inputs -->
-                        <div class="flex gap-2 items-center">
-                            <span id="bt-symbol"
-                                class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-center uppercase text-blue-400 font-medium min-w-[60px]">BTCUSDT</span>
-                            <select
-                                class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs focus:border-blue-500 outline-none"
-                                id="bt-interval">
-                                <option value="1h">1H</option>
-                                <option value="4h">4H</option>
-                                <option value="1d">1D</option>
-                            </select>
-                            <input type="number" value="30"
-                                class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs w-16 text-center focus:border-blue-500 outline-none"
-                                id="bt-days">
-                            <span class="text-xs text-gray-500 self-center">天</span>
-                        </div>
-                    </div>
-
-                    <button id="run-backtest-btn"
-                        class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
-                        <i data-lucide="play" class="w-4 h-4"></i>
-                        运行回测
-                    </button>
+                <!-- Code View -->
+                <div id="view-code" class="absolute inset-0 overflow-auto p-4 bg-[#0d1117] tab-content">
+                    <pre><code class="language-python bg-transparent p-0 text-sm code-editor" id="code-display"># 暂时没有策略</code></pre>
                 </div>
 
-                <!-- Dashboard Content -->
-                <div class="flex-1 flex overflow-hidden">
-                    <!-- Left: Metrics -->
-                    <div class="w-64 border-r border-gray-800 bg-gray-900/30 p-4 space-y-4 overflow-y-auto">
-                        <!-- Progress -->
-                        <div class="mb-4">
-                            <div class="flex justify-between text-xs text-gray-400 mb-1">
-                                <span>进度</span>
-                                <span id="progress-text">0%</span>
-                            </div>
-                            <div class="h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                                <div id="progress-bar" class="h-full bg-blue-500 w-0 transition-all duration-300"></div>
-                            </div>
-                        </div>
+                <!-- Explanation View -->
+                <div id="view-explanation" class="absolute inset-0 overflow-auto p-6 bg-gray-900 tab-content hidden">
+                    <div id="explanation-display" class="prose prose-invert max-w-none text-sm">
+                        <p class="text-gray-500 italic">暂无策略解读。</p>
+                    </div>
+                </div>
 
-                        <!-- Metrics Grid -->
-                        <div class="grid grid-cols-1 gap-3">
-                            <div class="bg-gray-800 rounded p-3">
-                                <div class="text-xs text-gray-500 mb-1">总收益率</div>
-                                <div class="text-lg font-bold text-green-400" id="metric-return">--%</div>
+                <!-- Backtest View -->
+                <div id="view-backtest" class="absolute inset-0 flex flex-col bg-gray-950 tab-content hidden">
+
+                    <!-- Backtest Control Bar -->
+                    <div
+                        class="h-12 border-b border-gray-800 bg-gray-900 flex items-center px-4 gap-4 justify-between shrink-0">
+                        <div class="flex items-center gap-4">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="settings-2" class="w-4 h-4 text-gray-400"></i>
+                                <span class="text-sm font-semibold text-gray-300">配置</span>
                             </div>
-                            <div class="bg-gray-800 rounded p-3">
-                                <div class="text-xs text-gray-500 mb-1">夏普比率</div>
-                                <div class="text-lg font-bold text-gray-200" id="metric-sharpe">--</div>
-                            </div>
-                            <div class="bg-gray-800 rounded p-3">
-                                <div class="text-xs text-gray-500 mb-1">最大回撤</div>
-                                <div class="text-lg font-bold text-red-400" id="metric-drawdown">--%</div>
-                            </div>
-                            <div class="bg-gray-800 rounded p-3">
-                                <div class="text-xs text-gray-500 mb-1">胜率</div>
-                                <div class="text-lg font-bold text-blue-400" id="metric-winrate">--%</div>
+                            <div class="flex gap-2 items-center">
+                                <span id="bt-symbol"
+                                    class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-center uppercase text-blue-400 font-medium min-w-[60px]">BTCUSDT</span>
+                                <select
+                                    class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs focus:border-blue-500 outline-none"
+                                    id="bt-interval">
+                                    <option value="1h">1H</option>
+                                    <option value="4h">4H</option>
+                                    <option value="1d">1D</option>
+                                </select>
+                                <input type="number" value="30"
+                                    class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs w-16 text-center focus:border-blue-500 outline-none"
+                                    id="bt-days">
+                                <span class="text-xs text-gray-500">天</span>
                             </div>
                         </div>
+                        <button id="run-backtest-btn"
+                            class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm font-medium flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i data-lucide="play" class="w-4 h-4"></i>
+                            运行回测
+                        </button>
                     </div>
 
-                    <!-- Right: Chart -->
-                    <div class="flex-1 p-4 relative bg-[#0b0e14]">
-                        <!-- Chart Title -->
-                        <div id="chart-title" class="absolute top-2 left-4 text-sm text-gray-400 font-medium z-10">
-                            <span id="chart-symbol">BTCUSDT</span> 净值曲线
+                    <!-- Backtest Dashboard -->
+                    <div class="flex-1 flex overflow-hidden">
+                        <!-- Left: Metrics -->
+                        <div
+                            class="w-56 border-r border-gray-800 bg-gray-900/30 p-3 space-y-3 overflow-y-auto shrink-0">
+                            <!-- Progress -->
+                            <div>
+                                <div class="flex justify-between text-xs text-gray-400 mb-1">
+                                    <span>进度</span>
+                                    <span id="progress-text">0%</span>
+                                </div>
+                                <div class="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                                    <div id="progress-bar" class="h-full bg-blue-500 w-0 transition-all duration-300">
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Metrics Grid -->
+                            <div class="grid grid-cols-1 gap-2">
+                                <div class="bg-gray-800 rounded p-2">
+                                    <div class="text-xs text-gray-500 mb-0.5">总收益率</div>
+                                    <div class="text-lg font-bold text-green-400" id="metric-return">--%</div>
+                                </div>
+                                <div class="bg-gray-800 rounded p-2">
+                                    <div class="text-xs text-gray-500 mb-0.5">夏普比率</div>
+                                    <div class="text-lg font-bold text-gray-200" id="metric-sharpe">--</div>
+                                </div>
+                                <div class="bg-gray-800 rounded p-2">
+                                    <div class="text-xs text-gray-500 mb-0.5">最大回撤</div>
+                                    <div class="text-lg font-bold text-red-400" id="metric-drawdown">--%</div>
+                                </div>
+                                <div class="bg-gray-800 rounded p-2">
+                                    <div class="text-xs text-gray-500 mb-0.5">胜率</div>
+                                    <div class="text-lg font-bold text-blue-400" id="metric-winrate">--%</div>
+                                </div>
+                            </div>
                         </div>
-                        <canvas id="equity-chart"></canvas>
-                        <!-- Chart Overlay for Empty State -->
-                        <div id="chart-overlay"
-                            class="absolute inset-0 flex items-center justify-center bg-gray-900/10 pointer-events-none">
-                            <div class="text-gray-600 text-sm flex flex-col items-center gap-2">
-                                <i data-lucide="activity" class="w-8 h-8 opacity-50"></i>
-                                <span>运行策略以查看净值曲线</span>
+
+                        <!-- Right: Chart + Logs -->
+                        <div class="flex-1 flex flex-col bg-[#0b0e14]">
+                            <!-- Chart Area -->
+                            <div class="flex-1 p-3 relative min-h-[180px]">
+                                <div id="chart-title"
+                                    class="absolute top-2 left-3 text-sm text-gray-400 font-medium z-10">
+                                    <span id="chart-symbol">BTCUSDT</span> 净值曲线
+                                </div>
+                                <canvas id="equity-chart"></canvas>
+                                <div id="chart-overlay"
+                                    class="absolute inset-0 flex items-center justify-center bg-gray-900/10 pointer-events-none">
+                                    <div class="text-gray-600 text-sm flex flex-col items-center gap-2">
+                                        <i data-lucide="activity" class="w-8 h-8 opacity-50"></i>
+                                        <span>运行策略以查看净值曲线</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Logs/Trades Tabs -->
+                            <div class="h-40 border-t border-gray-800 flex flex-col shrink-0">
+                                <div class="flex gap-2 text-xs p-2 bg-gray-900 border-b border-gray-800">
+                                    <button id="tab-logs-btn" class="px-3 py-1 bg-blue-600 text-white rounded text-xs"
+                                        onclick="switchLogTab('logs')">📋 运行日志</button>
+                                    <button id="tab-trades-btn"
+                                        class="px-3 py-1 bg-gray-700 text-gray-400 rounded hover:bg-gray-600 text-xs"
+                                        onclick="switchLogTab('trades')">💰 交易明细</button>
+                                </div>
+                                <div id="panel-logs" class="flex-1 overflow-y-auto p-2 text-xs font-mono text-gray-400">
+                                    <span class="text-gray-600">运行回测后查看日志...</span>
+                                </div>
+                                <div id="panel-trades" class="flex-1 overflow-y-auto p-2 hidden">
+                                    <span class="text-gray-600 text-xs">运行回测后查看交易明细...</span>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
+
             </div>
         </div>
     </main>
