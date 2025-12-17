@@ -66,7 +66,7 @@ class ChatResponse(BaseModel):
 
 class BacktestRequest(BaseModel):
     code: str = Field(..., description="策略代码")
-    symbol: str = Field("BTCUSDT", description="交易对")
+    symbol: str = Field("BTCUSDT", description="交易对 (多资产用逗号分隔)")
     interval: str = Field("1h", description="时间周期")
     days: int = Field(30, description="回测天数")
 
@@ -189,12 +189,27 @@ async def run_backtest(
 
     # 2. 获取数据
     try:
-        # 使用 get_historical_klines 支持任意天数的数据获取
-        klines = data_client.get_historical_klines(
-            symbol=req.symbol, 
-            interval=req.interval, 
-            days=req.days
-        )
+        if "," in req.symbol:
+            # 多资产模式
+            symbols = [s.strip() for s in req.symbol.split(",") if s.strip()]
+            klines = {}
+            for sym in symbols:
+                k = data_client.get_historical_klines(
+                    symbol=sym, 
+                    interval=req.interval, 
+                    days=req.days
+                )
+                if k:
+                    klines[sym] = k
+            if not klines:
+                raise ValueError(ErrorMessage.BACKTEST_DATA_EMPTY)
+        else:
+            # 单资产模式
+            klines = data_client.get_historical_klines(
+                symbol=req.symbol, 
+                interval=req.interval, 
+                days=req.days
+            )
     except ValueError as e:
         # 捕获无效交易对等错误
         raise HTTPException(status_code=400, detail=str(e))

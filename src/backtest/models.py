@@ -3,7 +3,7 @@
 回测数据模型
 
 核心模型：
-- Order: 订单（父压、限价单）
+- Order: 订单（市价、限价单）
 - Trade: 成交记录
 - Position: 持仓（支持多/空）
 - BacktestConfig: 回测配置
@@ -12,7 +12,7 @@
 枚举类型：
 - OrderSide: BUY / SELL
 - OrderType: MARKET / LIMIT
-- OrderStatus: PENDING / FILLED / CANCELLED / REJECTED
+- OrderStatus: CREATED / SUBMITTED / ACCEPTED / PARTIAL / FILLED / CANCELED / REJECTED / EXPIRED
 """
 
 from enum import Enum
@@ -27,17 +27,31 @@ class OrderSide(Enum):
 
 
 class OrderStatus(Enum):
-    """订单状态"""
-    PENDING = "PENDING"      # 待处理
-    FILLED = "FILLED"        # 已成交
-    CANCELLED = "CANCELLED"  # 已取消
-    REJECTED = "REJECTED"    # 已拒绝
+    """订单状态
+    
+    Phase 2.2 完整生命周期:
+    CREATED -> SUBMITTED -> ACCEPTED -> PARTIAL/FILLED/CANCELED/REJECTED/EXPIRED
+    """
+    CREATED = "CREATED"        # 创建但未提交
+    SUBMITTED = "SUBMITTED"    # 已提交给 Broker
+    ACCEPTED = "ACCEPTED"      # Broker 已受理（预检通过）
+    PARTIAL = "PARTIAL"        # 部分成交
+    FILLED = "FILLED"          # 全部成交
+    CANCELED = "CANCELED"      # 已取消
+    REJECTED = "REJECTED"      # 已拒绝（资金不足/无效参数）
+    EXPIRED = "EXPIRED"        # 已过期 (TTL/Day order)
+
 
 
 class OrderType(Enum):
-    """订单类型"""
-    MARKET = "MARKET"  # 市价单
-    LIMIT = "LIMIT"    # 限价单
+    """订单类型
+    
+    Phase 2.2 新增 STOP 和 STOP_LIMIT 类型用于止损/止盈策略
+    """
+    MARKET = "MARKET"          # 市价单
+    LIMIT = "LIMIT"            # 限价单
+    STOP = "STOP"              # 止损单 (触价即市价)
+    STOP_LIMIT = "STOP_LIMIT"  # 止损限价单 (触价即限价)
 
 
 @dataclass
@@ -64,12 +78,14 @@ class Order:
     order_type: OrderType
     quantity: float
     price: Optional[float] = None
+    trigger_price: Optional[float] = None  # 触发价格 (STOP/STOP_LIMIT)
     created_at: int = 0
-    status: OrderStatus = OrderStatus.PENDING
+    status: OrderStatus = OrderStatus.CREATED
     filled_avg_price: float = 0.0
     filled_quantity: float = 0.0
     fee: float = 0.0
     error_msg: str = ""
+    triggered: bool = False  # STOP 单是否已触发
 
 
 @dataclass
@@ -216,11 +232,12 @@ class BacktestLogEntry:
     
     Attributes:
         timestamp: 时间戳
-        bar_data: K线数据 (OHLCV)
+        bar_data: K线数据，单资产为 {open, high, low, close, volume}，
+                  多资产为 {symbol: {open, high, low, close, volume}}
         indicators: 指标值 {"EMA20": 50000, "RSI": 45}
         signals: 触发的信号 ["Golden Cross"]
         orders: 本周期订单列表
-        position_qty: 当前持仓数量
+        positions: 各资产持仓 {symbol: quantity}，空字典表示无持仓
         equity: 当前净值
         notes: 策略备注
     """
@@ -229,7 +246,7 @@ class BacktestLogEntry:
     indicators: dict = field(default_factory=dict)
     signals: List[str] = field(default_factory=list)
     orders: List[dict] = field(default_factory=list)
-    position_qty: float = 0.0
+    positions: dict = field(default_factory=dict)  # 多资产持仓
     equity: float = 0.0
     notes: str = ""
 

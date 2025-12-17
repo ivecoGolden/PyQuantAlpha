@@ -106,7 +106,7 @@ class TestBacktestEngineBasic:
         
         # 应该有一笔买入交易
         assert result.total_trades == 1
-        assert engine.positions["BTCUSDT"].quantity == 1.0
+        assert engine._broker.positions["BTCUSDT"].quantity == 1.0
     
     def test_buy_and_sell(self):
         """测试买入后卖出
@@ -122,7 +122,7 @@ class TestBacktestEngineBasic:
         
         # 应该有两笔交易：买入 + 卖出
         assert result.total_trades == 2
-        assert engine.positions["BTCUSDT"].quantity == 0
+        assert engine._broker.positions["BTCUSDT"].quantity == 0
     
     def test_profit_calculation(self):
         """测试盈利计算
@@ -167,7 +167,7 @@ class TestBacktestEngineCommission:
         
         # 买入 1 BTC @ 50000，手续费 = 50000 * 0.001 = 50
         # 剩余资金 = 100000 - 50000 - 50 = 49950
-        assert engine.cash == pytest.approx(49950, rel=0.01)
+        assert engine._broker.cash == pytest.approx(49950, rel=0.01)
     
     def test_slippage_applied(self):
         """测试滑点"""
@@ -183,7 +183,7 @@ class TestBacktestEngineCommission:
         
         # 买入滑点：50000 * 1.001 = 50050
         # 剩余资金 = 100000 - 50050 = 49950
-        assert engine.cash == pytest.approx(49950, rel=0.01)
+        assert engine._broker.cash == pytest.approx(49950, rel=0.01)
 
 
 class TestBacktestEngineRejection:
@@ -199,7 +199,7 @@ class TestBacktestEngineRejection:
         
         # 买入 1 BTC @ 50000 需要 5 万，资金不足应被拒绝
         assert result.total_trades == 0
-        assert engine.cash == 10000
+        assert engine._broker.cash == 10000
 
 
 class TestBacktestEngineEquity:
@@ -261,7 +261,7 @@ class Strategy:
         result = engine.run(SHORT_STRATEGY, bars)
         
         assert result.total_trades == 1
-        assert engine.positions["BTCUSDT"].quantity == -1.0
+        assert engine._broker.positions["BTCUSDT"].quantity == -1.0
     
     def test_short_then_close_profit(self):
         """测试开空后平仓盈利"""
@@ -287,7 +287,7 @@ class Strategy:
         result = engine.run(SHORT_CLOSE_STRATEGY, bars)
         
         assert result.total_trades == 2
-        assert engine.positions["BTCUSDT"].quantity == 0
+        assert engine._broker.positions["BTCUSDT"].quantity == 0
         
         pnl_trade = [t for t in result.trades if t.pnl != 0]
         assert len(pnl_trade) == 1

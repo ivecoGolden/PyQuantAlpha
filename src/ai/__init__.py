@@ -5,7 +5,7 @@ from .base import BaseLLMClient, ChatResult, LLMResponse
 from .deepseek import DeepSeekClient
 from .factory import LLMProvider, create_llm_client
 from .prompt import SYSTEM_PROMPT
-from .validator import validate_strategy_code, execute_strategy_code
+from src.backtest.loader import validate_strategy_code, execute_strategy_code
 
 __all__ = [
     "BaseLLMClient",

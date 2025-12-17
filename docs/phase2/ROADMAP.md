@@ -39,28 +39,37 @@ Phase 2 的核心目标是将 PyQuantAlpha 从一个 "AI 演示工具" 升级为
 - **[T6] 资金管理预留 (Sizer)**
     - 在 `Order` 接口中预留自动计算数量的逻辑（如 `size=None` 时按资金百分比下单），为未来引入 `Sizer` 模块做准备。
 
-### 2.3 [P2] 多资产回测引擎 (Multi-Asset Core)
-**参考**：Backtrader 的 `Cerebro` 数据对齐与 `Lines` 索引。
-**现状**：单列表 `List[Bar]`。
-**目标**：支持多币种对冲/轮动策略。
+### 2.3 [P2] 架构优化与多资产引擎 (Architecture & Multi-Asset)
 
-- **[T6] 数据对齐 (Data Alignment)**
-    - **实现方案**:  **并集时间轴 + 前值填充 (Forward Fill)**。主循环遍历所有数据源的时间戳并集。若某资产当前时间点无数据，自动填充上一个有效周期的 Bar（标记 `staleness=True`）。
-    - 策略 API 变更：采用显式字典 `self.datas["BTC"]` 获取数据对象。
-- **[T7] 引擎重构 & API 变更**
-    - **实现方案**: **Breaking Change 设计**。
-    - `on_bar(self, bars)` 入参改为 `Dict[str, Bar]`。
-    - 策略代码必须显式调用 `bars["BTC"].close`，移除单数 `bar` 参数以消除歧义。
-    - 重写 `Engine.run` 循环，支持处理上述字典结构。
-    - 仓位管理升级为 `Dict[symbol, Position]`。
+**目标**：解耦模块依赖，支持多资产数据流，提升引擎扩展性。
+
+#### Phase 2.3a: 架构重构 (Architecture Refactoring) [✅ 已完成]
+- **[T6] 依赖解耦**:
+    - 创建 `loader.py`，移除 `backtest` 对 `ai` 模块的依赖倒置。
+    - 创建 `strategy.py` 基类，提供 IDE 类型提示。
+- **[T7] 数据源抽象**:
+    - 引入 `DataFeed`、`SingleFeed`、`MultiFeed` 抽象。
+    - 优化 `Broker` 订单查找性能为 O(1)。
+
+#### Phase 2.3b: 多资产策略适配 (Multi-Asset Adaptation) [🚧 待办]
+**参考**：Backtrader 的 `Cerebro` 数据对齐与 `Lines` 索引。
+**现状**：已包含 `MultiFeed` 类，但仅支持内连接对齐；Engine 尚未适配多资产字典输入。
+
+- **[T8] 高级数据对齐**:
+    - **实现方案**: 升级 `MultiFeed` 对齐逻辑，从内连接改为 **并集时间轴 + 前值填充 (Forward Fill)**。
+- **[T9] 引擎与 API 升级**:
+    - **Engine**: 识别 `MultiFeed` 输入，适配 `run` 循环。
+    - **Strategy**: 引入 `on_bars(self, bars: Dict)` 或更新 `on_bar` 处理逻辑。
+    - **Prompt**: 更新 AI 提示词，教导生成多资产策略（如配对交易）。
 
 ---
 
 ## 3. 实施阶段 (Implementation Phasing)
 
-1.  **Phase 2.1 (Logging)**: 不破坏现有引擎结构，仅增强 `Observer` 和 `Callback`。
-2.  **Phase 2.2 (Core Trading)**: 提取 `BacktestBroker`，实现新的订单状态机与止损单逻辑。
-3.  **Phase 2.3 (Multi-Asset)**: 较大的底层重构，需确保前两步的单元测试覆盖充分，以防止回滚。
+1.  **Phase 2.1 (Logging)** [✅ 完成]: 增强日志系统，支持前端可视化。
+2.  **Phase 2.2 (Core Trading)** [✅ 完成]: 提取 `BacktestBroker`，实现高级订单类型。
+3.  **Phase 2.3a (Architecture)** [✅ 完成]: 数据源抽象与模块解耦。
+4.  **Phase 2.3b (Multi-Asset)** [🚧 待办]: 多资产对齐与 API 升级。
 
 ---
 

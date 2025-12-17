@@ -28,7 +28,7 @@ class Strategy:
         
     def on_bar(self, bar):
         self.bar_count += 1
-        history = self.get_bars(10)
+        history = self.get_bars(lookback=10)
         self.history_length = len(history)
 """
         engine = BacktestEngine()
@@ -48,7 +48,7 @@ class Strategy:
         
     def on_bar(self, bar):
         # 获取最近 5 根
-        history = self.get_bars(5)
+        history = self.get_bars(lookback=5)
         self.histories.append(len(history))
 """
         engine = BacktestEngine()
@@ -69,7 +69,7 @@ class Strategy:
     def on_bar(self, bar):
         # -1 是当前 bar（因为 on_bar 前已加入历史）
         # -2 才是前一根
-        prev = self.get_bar(-2)
+        prev = self.get_bar(offset=-2)
         if prev:
             self.prev_closes.append(prev.close)
         else:
@@ -94,7 +94,7 @@ class Strategy:
         
     def on_bar(self, bar):
         # 尝试获取不存在的偏移
-        self.result = self.get_bar(-100)
+        self.result = self.get_bar(offset=-100)
 """
         engine = BacktestEngine()
         engine.run(strategy_code, bars[:5])

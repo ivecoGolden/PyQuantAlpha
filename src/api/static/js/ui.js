@@ -6,6 +6,8 @@
 const UI = {
     // Chart 实例
     chart: null,
+    // Chart 实例
+    chart: null,
     // 当前策略代码（用于复制）
     currentCode: "",
 
@@ -104,7 +106,8 @@ const UI = {
             month: '2-digit',
             day: '2-digit',
             hour: '2-digit',
-            minute: '2-digit'
+            minute: '2-digit',
+            second: '2-digit'
         });
 
         // 限制数据点数量，避免浏览器卡顿 (保留最近 1000 点或抽样)
@@ -368,48 +371,7 @@ const UI = {
 
     // ============ Phase 2.1: 可视化增强 ============
 
-    /**
-     * 渲染买卖标记到图表
-     * @param {Array} markers [{x: timestamp, y: equity, type: 'BUY'|'SELL', text: '...'}]
-     */
-    renderMarkers(markers) {
-        if (!this.chart || !markers || markers.length === 0) return;
 
-        // 移除旧的 markers dataset (如果存在)
-        if (this.chart.data.datasets.length > 1) {
-            this.chart.data.datasets.splice(1, 1);
-        }
-
-        // 转换 markers 为 Chart.js 格式
-        const markerData = markers.map(m => ({
-            x: new Date(m.x).toLocaleString('zh-CN', {
-                month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
-            }),
-            y: m.y,
-            type: m.type,
-            text: m.text
-        }));
-
-        // 添加 Scatter dataset 作为标记层
-        this.chart.data.datasets.push({
-            type: 'scatter',
-            label: 'Trade Markers',
-            data: markerData.map(m => ({ x: m.x, y: m.y })),
-            pointStyle: (ctx) => {
-                const d = markerData[ctx.dataIndex];
-                return d && d.type === 'BUY' ? 'triangle' : 'rectRot';
-            },
-            backgroundColor: (ctx) => {
-                const d = markerData[ctx.dataIndex];
-                return d && d.type === 'BUY' ? '#22c55e' : '#ef4444';
-            },
-            pointRadius: 8,
-            pointHoverRadius: 10,
-            showLine: false
-        });
-
-        this.chart.update();
-    },
 
     /**
      * 渲染日志到页面 (如果有 logs 容器的话)

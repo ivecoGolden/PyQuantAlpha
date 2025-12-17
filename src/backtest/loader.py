@@ -1,17 +1,33 @@
-# src/ai/validator.py
-"""策略代码安全校验"""
+# src/backtest/loader.py
+"""
+策略加载器
+
+负责策略代码的安全校验和执行。从 ai.validator 模块迁移而来，
+解决了 backtest 模块对 ai 模块的依赖倒置问题。
+
+职责:
+- 语法校验
+- 安全检查（禁止 import/exec/eval）
+- 沙箱执行
+- 指标注入
+"""
 
 import ast
+import builtins
+from typing import Tuple, Any
 
 from src.messages import ErrorMessage
 
+
+# ============ 安全配置 ============
 
 # 允许的内置名称
 ALLOWED_BUILTINS = {
     'True', 'False', 'None',
     'abs', 'max', 'min', 'len', 'range', 'round',
     'int', 'float', 'str', 'bool', 'list', 'dict',
-    'print', 'sum', 'sorted', 'enumerate', 'zip'
+    'print', 'sum', 'sorted', 'enumerate', 'zip',
+    'isinstance'
 }
 
 # 允许的自定义名称（内置指标 + 策略接口）
@@ -46,6 +62,8 @@ FORBIDDEN_CALLS = {
 }
 
 
+# ============ 内部函数 ============
+
 def _collect_defined_names(tree: ast.Module) -> set:
     """收集代码中定义的类名和函数名
     
@@ -66,8 +84,52 @@ def _collect_defined_names(tree: ast.Module) -> set:
     return names
 
 
+def _create_safe_globals() -> dict:
+    """创建安全的执行环境
+    
+    Returns:
+        包含允许的内置函数和指标类的字典
+    """
+    # 必须包含 __build_class__ 才能定义类
+    safe_builtins = {
+        '__build_class__': builtins.__build_class__,
+        '__name__': '__main__',
+    }
+    
+    # 添加允许的内置函数
+    for name in ALLOWED_BUILTINS:
+        if hasattr(builtins, name):
+            safe_builtins[name] = getattr(builtins, name)
+    
+    safe_globals = {
+        '__builtins__': safe_builtins,
+    }
+    
+    # 注入指标类
+    try:
+        from src.indicators.ma import SMA, EMA
+        from src.indicators.oscillator import RSI, MACD
+        from src.indicators.volatility import ATR, BollingerBands
+        # 注入 Strategy 基类（用于类型提示和继承，虽然运行时动态注入 API）
+        from src.backtest.strategy import Strategy
+        
+        indicators = {
+            'SMA': SMA, 'EMA': EMA,
+            'RSI': RSI, 'MACD': MACD,
+            'ATR': ATR, 'BollingerBands': BollingerBands,
+            'Strategy': Strategy  # 允许显式继承
+        }
+        safe_globals.update(indicators)
+    except ImportError:
+        # 指标模块可能不存在，忽略
+        pass
+    
+    return safe_globals
 
-def validate_strategy_code(code: str) -> tuple[bool, str]:
+
+# ============ 公开 API ============
+
+def validate_strategy_code(code: str) -> Tuple[bool, str]:
     """验证策略代码安全性
     
     Args:
@@ -127,7 +189,7 @@ def validate_strategy_code(code: str) -> tuple[bool, str]:
     return True, "验证通过"
 
 
-def execute_strategy_code(code: str) -> object:
+def execute_strategy_code(code: str) -> Any:
     """安全执行策略代码并返回策略实例
     
     Args:
@@ -145,45 +207,11 @@ def execute_strategy_code(code: str) -> object:
         >>> if is_valid:
         ...     strategy = execute_strategy_code(code)
     """
-    # 创建受限的执行环境
-    # 注意：这里需要在回测引擎实现后注入指标类
-    import builtins
-    
-    # 必须包含 __build_class__ 才能定义类
-    safe_builtins = {
-        '__build_class__': builtins.__build_class__,
-        '__name__': '__main__',
-    }
-    
-    # 添加允许的内置函数
-    for name in ALLOWED_BUILTINS:
-        if hasattr(builtins, name):
-            safe_builtins[name] = getattr(builtins, name)
-    
-    safe_globals = {
-        '__builtins__': safe_builtins,
-    }
-    safe_locals = {}
-    
-    # 注入指标类
-    try:
-        from src.indicators.ma import SMA, EMA
-        from src.indicators.oscillator import RSI, MACD
-        from src.indicators.volatility import ATR, BollingerBands
-        
-        indicators = {
-            'SMA': SMA, 'EMA': EMA,
-            'RSI': RSI, 'MACD': MACD,
-            'ATR': ATR, 'BollingerBands': BollingerBands
-        }
-        safe_globals.update(indicators)
-    except ImportError as e:
-        # 如果回测引擎还没就绪，可能会失败，但在集成测试环境应该有了
-        pass
+    safe_globals = _create_safe_globals()
 
     try:
         # 使用同一个字典作为 globals 和 locals
-        # 这样定义的辅助类（如 VIXIndicator）会进入 globals
+        # 这样定义的辅助类（如自定义指标）会进入 globals
         # 使得 Strategy 类的方法可以访问到它们
         exec(code, safe_globals, safe_globals)
         strategy_class = safe_globals.get('Strategy')
@@ -194,3 +222,24 @@ def execute_strategy_code(code: str) -> object:
         raise
     except Exception as e:
         raise RuntimeError(ErrorMessage.STRATEGY_EXECUTE_FAILED.format(error=str(e)))
+
+
+def load_strategy(code: str) -> Any:
+    """加载策略代码（校验 + 执行）
+    
+    组合 validate_strategy_code 和 execute_strategy_code 的便捷方法。
+    
+    Args:
+        code: 策略代码字符串
+        
+    Returns:
+        Strategy 类实例
+        
+    Raises:
+        ValueError: 校验失败
+        RuntimeError: 执行失败
+    """
+    is_valid, msg = validate_strategy_code(code)
+    if not is_valid:
+        raise ValueError(msg)
+    return execute_strategy_code(code)

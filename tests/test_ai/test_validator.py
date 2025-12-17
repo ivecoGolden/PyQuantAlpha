@@ -2,7 +2,7 @@
 """策略代码校验器测试"""
 
 import pytest
-from src.ai.validator import validate_strategy_code, execute_strategy_code
+from src.backtest.loader import validate_strategy_code, execute_strategy_code
 
 
 class TestValidateStrategyCode:

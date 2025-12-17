@@ -94,46 +94,98 @@ class Strategy:
 
 ## 可用方法
 
-- `self.order(symbol, side, size)`: 下单
-  - side: "BUY" 或 "SELL"
-  - size: 下单数量
-  - symbol: 交易对（如 "BTCUSDT", "ETHUSDT" 等 Binance 支持的交易对）
+- `self.order(symbol, side, quantity, price=None, exectype=None, trigger=None)`: 下单
+  - `symbol`: 交易对（如 "BTCUSDT"）
+  - `side`: "BUY" 或 "SELL"
+  - `quantity`: 数量
+  - `price`: 限价单/止损限价单的价格
+  - `exectype`: 订单类型，默认 "MARKET"
+    - "MARKET": 市价单
+    - "LIMIT": 限价单（需指定 price）
+    - "STOP": 止损单（需指定 trigger）
+    - "STOP_LIMIT": 止损限价单（需指定 price 和 trigger）
+  - `trigger`: 止损/止盈触发价格
+  
+  示例：
+  ```python
+  # 市价买入
+  self.order("BTCUSDT", "BUY", 1.0)
+  
+  # 限价卖出
+  self.order("BTCUSDT", "SELL", 0.5, price=50000, exectype="LIMIT")
+  
+  # 止损单（跌破 40000 触发市价卖出）
+  self.order("BTCUSDT", "SELL", 0.5, exectype="STOP", trigger=40000)
+  ```
+
+## 多资产策略（配对/轮动）
+如果涉及多个交易对，`on_bar` 接收的 `bar` 参数将是一个字典：
+
+```python
+class Strategy(Strategy):
+    def init(self):
+        # 分别初始化指标
+        self.sma_btc = SMA(20)
+        self.sma_eth = SMA(20)
+    
+    def on_bar(self, bars):
+        # 多资产模式下，bars 是字典 {symbol: Bar}
+        # 必须检查数据是否存在（可能因停牌或未开始而缺失）
+        if "BTCUSDT" not in bars or "ETHUSDT" not in bars:
+            return
+            
+        bar_btc = bars["BTCUSDT"]
+        bar_eth = bars["ETHUSDT"]
+        
+        # 更新指标
+        v_btc = self.sma_btc.update(bar_btc.close)
+        v_eth = self.sma_eth.update(bar_eth.close)
+        
+        # 简单价差逻辑
+        if v_btc and v_eth:
+            spread = bar_btc.close - bar_eth.close * 14  # 假设对冲比例
+            if spread > 500:
+                self.order("BTCUSDT", "SELL", 0.1)
+                self.order("ETHUSDT", "BUY", 1.4)
+```
+
+## 可用方法
+
+- `self.order(symbol, side, quantity, price=None, exectype=None, trigger=None)`: 下单
+  - `symbol`: 交易对（如 "BTCUSDT"）
+  - ... (同上)
+
 - `self.close(symbol)`: 平仓
 - `self.get_position(symbol)`: 获取持仓信息
-  - 返回: `Position` 对象 或 `None` (无持仓)
-  - `Position` 属性: `quantity` (数量, 正多负空), `avg_price` (均价)
-  - 示例:
-    ```python
-    pos = self.get_position("BTCUSDT")
-    current_qty = pos.quantity if pos else 0
-    if current_qty > 0:
-        pass
-    ```
 
 ### 历史数据访问
-- `self.get_bars(lookback=100)`: 获取最近 N 根 K 线
-  - 返回: `List[Bar]`，按时间升序
-- `self.get_bar(offset=-1)`: 获取指定偏移的 K 线
-  - offset: -1 表示前一根，-2 表示前两根
-  - 返回: `Bar` 或 `None`
+- `self.get_bars(symbol=None, lookback=100)`: 获取最近 N 根 K 线
+  - 指定 `symbol` (推荐): 返回 `List[Bar]`
+  - 不指定: 单资产模式返回 `List[Bar]`，多资产模式返回 `List[Dict]`
+- `self.get_bar(symbol=None, offset=-1)`: 获取指定偏移的 K 线
 
-示例：
+## 策略回调（可选）
+
+你可以实现以下方法来处理订单和交易事件：
+
 ```python
-# 获取前一根 K 线的收盘价
-prev_bar = self.get_bar(-1)
-if prev_bar:
-    prev_close = prev_bar.close
+def notify_order(self, order):
+    # 订单状态变化通知
+    if order.status == "FILLED":
+        print(f"成交: {order.side} {order.quantity} @ {order.filled_avg_price}")
+    elif order.status == "REJECTED":
+        print(f"拒单: {order.error_msg}")
+
+def notify_trade(self, trade):
+    # 交易盈亏通知（平仓时触发）
+    print(f"交易完成: 盈亏 {trade.pnl:.2f}, 费用 {trade.fee:.2f}")
 ```
 
 ## 数据结构
 
 bar 对象包含:
 - `bar.timestamp`: 时间戳
-- `bar.open`: 开盘价
-- `bar.high`: 最高价
-- `bar.low`: 最低价
-- `bar.close`: 收盘价
-- `bar.volume`: 成交量
+- `bar.open`, `bar.high`, `bar.low`, `bar.close`, `bar.volume`
 
 ## 重要规则
 

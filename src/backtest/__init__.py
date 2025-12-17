@@ -8,12 +8,13 @@
 - 净值曲线与绩效分析
 - SSE 实时进度推送
 - 策略回调钩子 (notify_order/notify_trade)
+- DataFeed 数据抽象（支持单/多资产）
 
 核心组件：
 - BacktestEngine: 回测引擎核心
 - BacktestAnalyzer: 绩效分析器
-- BacktestManager: 异步任务管理 (SSE)
-- BacktestLogger: 日志与可视化数据收集
+- BacktestBroker: 经纪商抽象
+- DataFeed: 数据源抽象
 """
 
 from .models import (
@@ -28,8 +29,13 @@ from .models import (
 )
 from .engine import BacktestEngine
 from .analyzer import BacktestAnalyzer
+from .broker import BacktestBroker
+from .feed import DataFeed, SingleFeed, MultiFeed, create_feed
+from .loader import validate_strategy_code, execute_strategy_code, load_strategy
+from .strategy import Strategy
 
 __all__ = [
+    # Models
     "OrderSide",
     "OrderStatus",
     "OrderType",
@@ -38,6 +44,19 @@ __all__ = [
     "Position",
     "BacktestConfig",
     "BacktestResult",
+    # Engine
     "BacktestEngine",
     "BacktestAnalyzer",
+    "BacktestBroker",
+    # Feed
+    "DataFeed",
+    "SingleFeed",
+    "MultiFeed",
+    "create_feed",
+    # Loader
+    "validate_strategy_code",
+    "execute_strategy_code",
+    "load_strategy",
+    # Strategy
+    "Strategy",
 ]

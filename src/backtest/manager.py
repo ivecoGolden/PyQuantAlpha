@@ -131,6 +131,10 @@ class BacktestManager:
             loop = asyncio.get_running_loop()
             
             def thread_safe_progress(c, t, e, ts):
+                # 降低日志频率，每 10% 或最后一次记录
+                if t > 0 and (c % (t // 10 + 1) == 0 or c == t):
+                    logger.info(f"Progress: {c}/{t}")
+                
                 loop.call_soon_threadsafe(
                     queue.put_nowait,
                     {
@@ -143,6 +147,7 @@ class BacktestManager:
                     }
                 )
             
+            logger.info(f"Starting engine.run in executor for task {task_id}")
             # 在线程池运行
             result = await loop.run_in_executor(
                 None, 
@@ -175,7 +180,6 @@ class BacktestManager:
                     ],
                     # Phase 2.1: 可视化数据
                     "visuals": {
-                        "markers": engine._logger.markers,
                         "logs": engine._logger.order_logs,
                         "trades": engine._logger.trade_logs
                     }

@@ -15,18 +15,18 @@
 - 历史数据访问 (get_bars/get_bar)
 """
 
-import uuid
 import logging
-from typing import Dict, List, Optional, Any, Callable
+from typing import List, Optional, Any, Callable, Union, Dict
 
 from src.data.models import Bar
-from src.ai.validator import execute_strategy_code
 from src.messages import ErrorMessage
+
+from .loader import execute_strategy_code
+from .feed import DataFeed, SingleFeed, create_feed
 
 from .models import (
     Order,
     OrderSide,
-    OrderStatus,
     OrderType,
     Trade,
     Position,
@@ -35,6 +35,7 @@ from .models import (
 )
 from .analyzer import BacktestAnalyzer
 from .logger import BacktestLogger
+from .broker import BacktestBroker
 
 
 logger = logging.getLogger(__name__)
@@ -64,15 +65,16 @@ class BacktestEngine:
     
     def _reset(self) -> None:
         """重置引擎状态"""
-        self.cash = self.config.initial_capital
-        self.positions: Dict[str, Position] = {}
-        self.pending_orders: List[Order] = []
+        # Phase 2.2: 资金和持仓由 Broker 管理
+        self._broker = BacktestBroker(self.config)
+        
+        # 回测结果数据
         self.trades: List[Trade] = []
         self.equity_curve: List[dict] = []
         self._current_bar: Optional[Bar] = None
+        self._current_timestamp: int = 0
         self._strategy = None
         self._order_counter = 0
-        self._trade_counter = 0
         
         # 数据访问支持
         self._bar_history: List[Bar] = []  # K 线历史缓存（供策略回溯）
@@ -82,14 +84,14 @@ class BacktestEngine:
     def run(
         self,
         strategy_code: str,
-        data: List[Bar],
+        data: Union[List[Bar], DataFeed],
         on_progress: Optional[Callable[[int, int, float, int], None]] = None
     ) -> BacktestResult:
         """运行回测
         
         Args:
             strategy_code: 策略代码字符串
-            data: K 线数据列表
+            data: K 线数据（List[Bar] 或 DataFeed）
             on_progress: 进度回调 (current_index, total_length, equity, timestamp)
             
         Returns:
@@ -100,7 +102,13 @@ class BacktestEngine:
         """
         self._reset()
         
-        if not data:
+        # 自动将 List 或 Dict 转换为 DataFeed
+        if isinstance(data, DataFeed):
+            feed = data
+        else:
+            feed = create_feed(data)
+        
+        if not feed or len(feed) == 0:
             logger.warning(ErrorMessage.BACKTEST_DATA_EMPTY)
             return BacktestAnalyzer.analyze(
                 self.config.initial_capital,
@@ -118,34 +126,67 @@ class BacktestEngine:
             raise RuntimeError(ErrorMessage.BACKTEST_STRATEGY_INIT_FAILED.format(error=e))
         
         # 3. 遍历数据
-        total_bars = len(data)
-        for i, bar in enumerate(data):
-            self._current_bar = bar
-            self._bar_history.append(bar)  # 缓存历史数据
+        total_bars = len(feed)
+        for i, data_item in enumerate(feed):
+            # 统一处理单/多资产数据
+            if isinstance(data_item, dict):
+                # MultiFeed: Dict[str, Bar]
+                bars = data_item
+                # 当前时间取所有 Bar 的最大时间戳（解决对齐时的各 Bar 时间戳不一致问题）
+                current_timestamp = max(b.timestamp for b in bars.values())
+                # 记录所有涉及的 symbol
+                for s in bars.keys():
+                    self._symbols.add(s)
+            else:
+                # SingleFeed: Bar
+                sym = feed.symbols[0]
+                bars = {sym: data_item}
+                current_timestamp = data_item.timestamp
             
-            # 3.1 撮合待处理订单
-            self._match_orders(bar)
+            self._current_bar = data_item  # 存对应的原始对象
+            self._current_timestamp = current_timestamp
+            self._bar_history.append(data_item)
+            
+            # 3.1 撮合订单 (遍历所有资产)
+            for symbol, bar in bars.items():
+                # DEFAULT 是 SingleFeed 的占位符，表示未指定 symbol
+                # 传入 None 让 broker 跳过 symbol 过滤，撮合所有订单
+                match_symbol = None if symbol == "DEFAULT" else symbol
+                new_trades = self._broker.process_orders(bar, symbol=match_symbol)
+                for trade in new_trades:
+                    self.trades.append(trade)
+                    self._on_trade_filled(trade)
             
             # 3.2 记录净值
-            equity = self._calculate_equity(bar)
+            equity = self._calculate_equity(data_item)
+            
             self.equity_curve.append({
-                "timestamp": bar.timestamp,
+                "timestamp": current_timestamp,
                 "equity": equity
             })
             
-            # 3.3 日志记录
-            position = list(self.positions.values())[0] if self.positions else None
-            pos_qty = position.quantity if position else 0
-            self._logger.log_bar(bar, equity=equity, position_qty=pos_qty)
+            # 3.3 日志记录（支持多资产）
+            if bars:
+                # 构建持仓字典 {symbol: quantity}
+                positions_dict = {
+                    sym: pos.quantity 
+                    for sym, pos in self._broker.positions.items() 
+                    if pos.quantity != 0
+                }
+                # 多资产传入 Dict[str, Bar]，单资产传入 Bar
+                bar_data = bars if len(bars) > 1 else list(bars.values())[0]
+                self._logger.log_bar(bar_data, equity=equity, positions=positions_dict)
             
             # 如果有回调，上报进度
             if on_progress:
-                on_progress(i + 1, total_bars, equity, bar.timestamp)
+                on_progress(i + 1, total_bars, equity, current_timestamp)
             
-            # 3.4 执行策略 on_bar
+            # 3.4 执行策略
             try:
-                self._strategy.on_bar(bar)
+                # 如果是多资产，传入 Dict；单资产传入 Bar
+                self._strategy.on_bar(data_item)
             except Exception as e:
+                # 某些策略可能只有 on_bar(bar)，给多资产时会报错
                 logger.error(ErrorMessage.BACKTEST_STRATEGY_ERROR.format(error=e))
             
             # 3.5 提交日志条目
@@ -188,183 +229,59 @@ class BacktestEngine:
         if not hasattr(self._strategy, 'notify_trade'):
             self._strategy.notify_trade = lambda trade: None
     
-    def _match_orders(self, bar: Bar) -> None:
-        """撮合订单
-        
-        使用当前 Bar 的收盘价进行撮合。
+    def _on_trade_filled(self, trade: Trade) -> None:
+        """处理成交后的回调和日志
         
         Args:
-            bar: 当前 K 线
+            trade: 成交记录
         """
-        filled_orders = []
+        # 获取对应订单 (O(1) 查找)
+        order = self._broker.get_order(trade.order_id)
         
-        for order in self.pending_orders:
-            # 计算成交价格（含滑点）
-            if order.side == OrderSide.BUY:
-                fill_price = bar.close * (1 + self.config.slippage)
-            else:
-                fill_price = bar.close * (1 - self.config.slippage)
-            
-            # 计算手续费
-            fee = fill_price * order.quantity * self.config.commission_rate
-            
-            # 检查资金/持仓是否充足
-            if order.side == OrderSide.BUY:
-                position = self.positions.get(order.symbol)
-                if position and position.quantity < 0:
-                    # 平空仓：空头买回
-                    # 逻辑：开空时收到了卖出款项（已在开空时加到 cash），平空时支付买入成本
-                    # 盈亏 = (开空价 - 买回价) * 数量，这会在 position.update 中计算
-                    close_qty = min(order.quantity, abs(position.quantity))
-                    open_qty = order.quantity - close_qty  # 如果买入量 > 空头持仓量，则开多
-                    
-                    # 平空部分：支付买回成本 + 手续费
-                    close_cost = fill_price * close_qty + fee * (close_qty / order.quantity)
-                    # 开多部分（如有）：支付买入成本 + 手续费
-                    open_cost = fill_price * open_qty + fee * (open_qty / order.quantity) if open_qty > 0 else 0
-                    
-                    required_cash = close_cost + open_cost
-                    if required_cash > self.cash:
-                        order.status = OrderStatus.REJECTED
-                        order.error_msg = ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
-                        logger.warning(ErrorMessage.BACKTEST_ORDER_REJECTED.format(
-                            order_id=order.id, reason=ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
-                        ))
-                        continue
-                    self.cash -= required_cash
-                else:
-                    # 开多仓或加仓（无空头持仓）
-                    required_cash = fill_price * order.quantity + fee
-                    if required_cash > self.cash:
-                        order.status = OrderStatus.REJECTED
-                        order.error_msg = ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
-                        logger.warning(ErrorMessage.BACKTEST_ORDER_REJECTED.format(
-                            order_id=order.id, reason=ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
-                        ))
-                        continue
-                    self.cash -= required_cash
-            else:
-                # SELL: 平多或开空
-                position = self.positions.get(order.symbol)
-                if position and position.quantity > 0:
-                    # 有多头持仓：平多
-                    if position.quantity >= order.quantity:
-                        # 全部平仓或部分平仓，收到卖出款项
-                        proceeds = fill_price * order.quantity - fee
-                        self.cash += proceeds
-                    else:
-                        # 部分平多 + 开空
-                        # 平多部分收到款项
-                        close_qty = position.quantity
-                        proceeds = fill_price * close_qty - fee
-                        self.cash += proceeds
-                        # 开空部分需要保证金
-                        short_qty = order.quantity - close_qty
-                        margin_required = fill_price * short_qty  # 100% 保证金
-                        if margin_required > self.cash:
-                            order.status = OrderStatus.REJECTED
-                            order.error_msg = ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
-                            logger.warning(ErrorMessage.BACKTEST_ORDER_REJECTED.format(
-                                order_id=order.id, reason="开空保证金不足"
-                            ))
-                            continue
-                        # 冻结保证金（不扣除，只是锁定）
-                else:
-                    # 无多头持仓：直接开空
-                    # 开空逻辑：卖出借入的资产，收到卖出款项
-                    # 检查保证金（简化为100%保证金）
-                    margin_required = fill_price * order.quantity + fee
-                    if margin_required > self.cash:
-                        order.status = OrderStatus.REJECTED
-                        order.error_msg = ErrorMessage.BACKTEST_INSUFFICIENT_FUNDS
-                        logger.warning(ErrorMessage.BACKTEST_ORDER_REJECTED.format(
-                            order_id=order.id, reason="开空保证金不足"
-                        ))
-                        continue
-                    # 收到卖出款项（减去手续费）
-                    proceeds = fill_price * order.quantity - fee
-                    self.cash += proceeds
-            
-            # 更新持仓
-            position = self.positions.setdefault(order.symbol, Position(order.symbol))
-            delta = order.quantity if order.side == OrderSide.BUY else -order.quantity
-            pnl = position.update(delta, fill_price)
-            
-            # 更新订单状态
-            order.status = OrderStatus.FILLED
-            order.filled_avg_price = fill_price
-            order.filled_quantity = order.quantity
-            order.fee = fee
-            
-            # 记录成交
-            trade = Trade(
-                id=self._generate_trade_id(),
-                order_id=order.id,
-                symbol=order.symbol,
-                side=order.side,
-                price=fill_price,
-                quantity=order.quantity,
-                fee=fee,
-                timestamp=bar.timestamp,
-                pnl=pnl
-            )
-            self.trades.append(trade)
-            filled_orders.append(order)
-            
-            # Phase 2.1: 触发策略回调 notify_order
+        if order:
+            # 触发策略回调 notify_order
             try:
                 self._strategy.notify_order(order)
             except Exception as e:
                 logger.warning(f"notify_order 回调异常: {e}")
             
-            # Phase 2.1: 记录订单事件到日志（用于前端可视化）
-            current_equity = self._calculate_equity(bar)
-            self._logger.log_order_event(order, current_equity)
-            
-            # Phase 2.1: 如果平仓产生盈亏，触发 notify_trade
-            if pnl != 0:
-                try:
-                    self._strategy.notify_trade(trade)
-                except Exception as e:
-                    logger.warning(f"notify_trade 回调异常: {e}")
-                # 记录交易事件
-                self._logger.log_trade_event(trade)
-            
-            logger.debug(
-                f"成交: {order.symbol} {order.side.value} "
-                f"{order.quantity} @ {fill_price:.2f}, PnL: {pnl:.2f}"
-            )
+            # 记录订单事件到日志
+            self._logger.log_order_event(order, timestamp=trade.timestamp)
         
-        # 清空待处理订单
-        self.pending_orders = []
+        # 如果平仓产生盈亏，触发 notify_trade
+        if trade.pnl != 0:
+            try:
+                self._strategy.notify_trade(trade)
+            except Exception as e:
+                logger.warning(f"notify_trade 回调异常: {e}")
+            # 记录交易事件
+            self._logger.log_trade_event(trade)
     
-    def _calculate_equity(self, bar: Bar) -> float:
+    def _calculate_equity(self, bar_data: Union[Bar, Dict[str, Bar]]) -> float:
         """计算当前净值
         
         Args:
-            bar: 当前 K 线
+            bar_data: 当前 K 线数据 (Bar 或 Dict)
             
         Returns:
             账户净值
         """
-        equity = self.cash
+        prices = {}
+        if isinstance(bar_data, dict):
+            prices = {s: b.close for s, b in bar_data.items()}
+        elif isinstance(bar_data, Bar):
+            # SingleFeed 模式：使用当前 Bar 的价格计算所有持仓的市值
+            if self._symbols:
+                 prices = {s: bar_data.close for s in self._symbols}
         
-        for position in self.positions.values():
-            if position.quantity != 0:
-                # 使用收盘价计算市值
-                equity += position.market_value(bar.close)
-        
-        return equity
+        return self._broker.get_value(prices) if prices else self._broker.cash
     
     def _generate_order_id(self) -> str:
         """生成订单 ID"""
         self._order_counter += 1
         return f"O{self._order_counter:06d}"
     
-    def _generate_trade_id(self) -> str:
-        """生成成交 ID"""
-        self._trade_counter += 1
-        return f"T{self._trade_counter:06d}"
+
     
     # ============ 策略 API ============
     
@@ -373,32 +290,49 @@ class BacktestEngine:
         symbol: str,
         side: str,
         quantity: float,
-        price: Optional[float] = None
+        price: Optional[float] = None,
+        exectype: str = None,
+        trigger: Optional[float] = None
     ) -> Order:
         """下单 API
+        
+        Phase 2.2: 使用 Broker 管理订单
         
         Args:
             symbol: 交易对
             side: "BUY" 或 "SELL"
             quantity: 数量
             price: 限价单价格（可选，默认市价单）
+            exectype: 订单类型 "MARKET", "LIMIT", "STOP", "STOP_LIMIT" (可选)
+            trigger: 止损触发价格 (STOP/STOP_LIMIT 必填)
             
         Returns:
             Order 对象
         """
+        # 确定订单类型
+        if exectype:
+            order_type = OrderType(exectype)
+        elif price:
+            order_type = OrderType.LIMIT
+        else:
+            order_type = OrderType.MARKET
+        
         order = Order(
             id=self._generate_order_id(),
             symbol=symbol,
             side=OrderSide(side),
-            order_type=OrderType.LIMIT if price else OrderType.MARKET,
+            order_type=order_type,
             quantity=quantity,
             price=price,
-            created_at=self._current_bar.timestamp if self._current_bar else 0
+            trigger_price=trigger,
+            created_at=self._current_timestamp
         )
-        self.pending_orders.append(order)
+        
+        # Phase 2.2: 使用 Broker 提交订单
+        self._broker.submit_order(order)
         self._symbols.add(symbol)  # 记录使用的交易对
         
-        logger.debug(f"创建订单: {order.id} {symbol} {side} {quantity}")
+        logger.debug(f"创建订单: {order.id} {symbol} {side} {quantity} type={order_type.value}")
         return order
     
     def _api_close(self, symbol: str) -> Optional[Order]:
@@ -410,7 +344,7 @@ class BacktestEngine:
         Returns:
             Order 对象，如果无持仓返回 None
         """
-        position = self.positions.get(symbol)
+        position = self._broker.get_position(symbol)
         if not position or position.quantity == 0:
             return None
         
@@ -428,42 +362,61 @@ class BacktestEngine:
         Returns:
             Position 对象，如果无持仓或持仓数量为 0 则返回 None
         """
-        position = self.positions.get(symbol)
-        if position is None or position.quantity == 0:
-            return None
-        return position
+        return self._broker.get_position(symbol)
     
     def _api_get_cash(self) -> float:
         """获取可用资金"""
-        return self.cash
+        return self._broker.cash
     
     def _api_get_equity(self) -> float:
         """获取账户净值"""
         if self._current_bar:
             return self._calculate_equity(self._current_bar)
-        return self.cash
+        return self._broker.cash
     
-    def _api_get_bars(self, lookback: int = 100) -> List[Bar]:
+    def _api_get_bars(self, symbol: Optional[str] = None, lookback: int = 100) -> Union[List[Bar], List[dict]]:
         """获取历史 K 线数据
         
         Args:
+            symbol: 交易对 (可选，不指定则返回全部)
             lookback: 返回最近 N 根 K 线
             
         Returns:
-            K 线列表（按时间升序）
+            List[Bar] 或 List[Dict]
         """
-        return self._bar_history[-lookback:]
+        history_slice = self._bar_history[-lookback:]
+        
+        if symbol:
+            result = []
+            for item in history_slice:
+                if isinstance(item, dict):
+                    if symbol in item:
+                        result.append(item[symbol])
+                elif isinstance(item, Bar):
+                    result.append(item)
+            return result
+        
+        return history_slice
     
-    def _api_get_bar(self, offset: int = -1) -> Optional[Bar]:
+    def _api_get_bar(self, symbol: Optional[str] = None, offset: int = -1) -> Optional[Union[Bar, Dict[str, Bar]]]:
         """获取指定偏移的 K 线
         
         Args:
-            offset: 偏移量（-1 表示前一根，-2 表示前两根）
+            symbol: 交易对 (可选)
+            offset: 偏移量（-1 表示前一根）
             
         Returns:
-            Bar 对象，如果偏移超出范围返回 None
+            Bar 对象，或 MultiFeed 模式下的 Dict[str, Bar]
         """
         try:
-            return self._bar_history[offset]
+            item = self._bar_history[offset]
+            
+            if symbol:
+                if isinstance(item, dict):
+                    return item.get(symbol)
+                return item
+            else:
+                return item
+                
         except IndexError:
             return None

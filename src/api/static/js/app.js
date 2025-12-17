@@ -172,7 +172,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Phase 2.1: 渲染可视化数据
                 if (data.visuals) {
-                    UI.renderMarkers(data.visuals.markers);
                     UI.renderLogs(data.visuals.logs);
                     UI.renderTrades(data.visuals.trades);
                 }

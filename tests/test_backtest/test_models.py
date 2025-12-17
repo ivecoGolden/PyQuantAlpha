@@ -29,10 +29,15 @@ class TestOrderStatus:
     """OrderStatus 枚举测试"""
     
     def test_all_statuses(self):
-        assert OrderStatus.PENDING.value == "PENDING"
+        # Phase 2.2: 新的完整生命周期状态
+        assert OrderStatus.CREATED.value == "CREATED"
+        assert OrderStatus.SUBMITTED.value == "SUBMITTED"
+        assert OrderStatus.ACCEPTED.value == "ACCEPTED"
+        assert OrderStatus.PARTIAL.value == "PARTIAL"
         assert OrderStatus.FILLED.value == "FILLED"
-        assert OrderStatus.CANCELLED.value == "CANCELLED"
+        assert OrderStatus.CANCELED.value == "CANCELED"
         assert OrderStatus.REJECTED.value == "REJECTED"
+        assert OrderStatus.EXPIRED.value == "EXPIRED"
 
 
 class TestOrder:
@@ -51,7 +56,7 @@ class TestOrder:
         assert order.symbol == "BTCUSDT"
         assert order.side == OrderSide.BUY
         assert order.quantity == 0.1
-        assert order.status == OrderStatus.PENDING
+        assert order.status == OrderStatus.CREATED  # Phase 2.2: 新默认状态
         assert order.price is None
     
     def test_create_limit_order(self):

@@ -27,14 +27,14 @@ class TestBacktestLogger:
         logger = BacktestLogger(enabled=True)
         bar = Bar(timestamp=1000, open=100, high=105, low=95, close=102, volume=1000)
         
-        logger.log_bar(bar, equity=10000, position_qty=1.5)
+        logger.log_bar(bar, equity=10000, positions={"BTCUSDT": 1.5})
         logger.commit()
         
         entries = logger.get_entries()
         assert len(entries) == 1
         assert entries[0].timestamp == 1000
         assert entries[0].equity == 10000
-        assert entries[0].position_qty == 1.5
+        assert entries[0].positions == {"BTCUSDT": 1.5}
         assert entries[0].bar_data["close"] == 102
     
     def test_add_indicator(self):

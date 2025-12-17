@@ -11,12 +11,11 @@
 2. **可视化日志** (Phase 2.1)
    - order_logs: 订单流水 [{time, level, msg}]
    - trade_logs: 交易明细 [{time, symbol, pnl, ...}]
-   - markers: 图表标记点 [{x, y, type, text}]
 """
 
 import json
 import logging
-from typing import List, Optional
+from typing import Dict, List, Optional, Union
 from dataclasses import asdict
 
 from src.data.models import Bar
@@ -52,35 +51,53 @@ class BacktestLogger:
         # Phase 2.1: 可视化数据收集
         self.order_logs: List[dict] = []   # 订单流水
         self.trade_logs: List[dict] = []   # 交易流水（含盈亏）
-        self.markers: List[dict] = []       # 买卖标记点
     
     def log_bar(
         self, 
-        bar: Bar, 
+        bar_data: Union[Bar, Dict[str, Bar]],
         equity: float = 0.0,
-        position_qty: float = 0.0
+        positions: Optional[Dict[str, float]] = None
     ) -> None:
         """开始记录新的一根 K 线
         
         Args:
-            bar: K 线数据
+            bar_data: K 线数据，单资产为 Bar，多资产为 Dict[str, Bar]
             equity: 当前净值
-            position_qty: 当前持仓数量
+            positions: 各资产持仓 {symbol: quantity}
         """
         if not self.enabled:
             return
         
+        # 处理 bar_data 格式
+        if isinstance(bar_data, dict):
+            # 多资产：{symbol: {ohlcv}}
+            formatted_bar_data = {
+                symbol: {
+                    "open": bar.open,
+                    "high": bar.high,
+                    "low": bar.low,
+                    "close": bar.close,
+                    "volume": bar.volume
+                }
+                for symbol, bar in bar_data.items()
+            }
+            timestamp = max(bar.timestamp for bar in bar_data.values())
+        else:
+            # 单资产：{ohlcv}
+            formatted_bar_data = {
+                "open": bar_data.open,
+                "high": bar_data.high,
+                "low": bar_data.low,
+                "close": bar_data.close,
+                "volume": bar_data.volume
+            }
+            timestamp = bar_data.timestamp
+        
         self._current_entry = BacktestLogEntry(
-            timestamp=bar.timestamp,
-            bar_data={
-                "open": bar.open,
-                "high": bar.high,
-                "low": bar.low,
-                "close": bar.close,
-                "volume": bar.volume
-            },
+            timestamp=timestamp,
+            bar_data=formatted_bar_data,
             equity=equity,
-            position_qty=position_qty
+            positions=positions or {}
         )
     
     def add_indicator(self, name: str, value: float) -> None:
@@ -116,7 +133,10 @@ class BacktestLogger:
             "id": order.id,
             "symbol": order.symbol,
             "side": order.side.value,
+            "order_type": order.order_type.value if hasattr(order, 'order_type') and order.order_type else "MARKET",
             "quantity": order.quantity,
+            "price": order.price,
+            "trigger_price": getattr(order, 'trigger_price', None),
             "status": order.status.value
         })
     
@@ -148,7 +168,6 @@ class BacktestLogger:
         # Phase 2.1: 清空可视化数据
         self.order_logs.clear()
         self.trade_logs.clear()
-        self.markers.clear()
     
     def export_jsonl(self, filepath: str) -> None:
         """导出为 JSON Lines 格式
@@ -164,31 +183,41 @@ class BacktestLogger:
     
     # ============ Phase 2.1: 可视化日志方法 ============
     
-    def log_order_event(self, order, equity: float) -> None:
+    def log_order_event(self, order, timestamp: int = None) -> None:
         """记录订单事件（用于前端可视化）
         
         Args:
             order: Order 对象
-            equity: 当前净值（用于 marker Y 坐标）
+            timestamp: 事件发生的时间戳（毫秒），如果不传则使用 order.created_at
         """
         if not self.enabled:
             return
         
+        ts = timestamp if timestamp is not None else order.created_at
+        
         from datetime import datetime
-        time_str = datetime.fromtimestamp(order.created_at / 1000).strftime("%Y-%m-%d %H:%M:%S")
+        time_str = datetime.fromtimestamp(ts / 1000).strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 构建订单描述，包含订单类型信息
+        order_type = order.order_type.value if hasattr(order, 'order_type') and order.order_type else "MARKET"
+        
+        # 价格信息
+        if order.filled_avg_price:
+            price_str = f"@ {order.filled_avg_price:.2f}"
+        elif order.price:
+            price_str = f"限价 {order.price:.2f}"
+        elif order.trigger_price:
+            price_str = f"触发价 {order.trigger_price:.2f}"
+        else:
+            price_str = "市价"
+        
+        # 止损单触发状态
+        triggered_str = " [已触发]" if getattr(order, 'triggered', False) else ""
         
         self.order_logs.append({
             "time": time_str,
             "level": "ORDER",
-            "msg": f"{order.status.value}: {order.side.value} {order.symbol} {order.quantity:.4f} @ {order.filled_avg_price:.2f}"
-        })
-        
-        # 添加图表标记
-        self.markers.append({
-            "x": order.created_at,
-            "y": equity,
-            "type": order.side.value,
-            "text": f"{order.side.value} {order.quantity:.4f} @ {order.filled_avg_price:.2f}"
+            "msg": f"{order.status.value}: {order_type} {order.side.value} {order.symbol} {order.quantity:.4f} {price_str}{triggered_str}"
         })
     
     def log_trade_event(self, trade) -> None:
