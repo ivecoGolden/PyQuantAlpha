@@ -137,6 +137,7 @@ class ErrorMessage:
     STRATEGY_SYNTAX_ERROR: Final[str] = "语法错误: {msg} (行 {line})"
     STRATEGY_EXECUTE_FAILED: Final[str] = "策略代码执行失败: {error}"
     STRATEGY_INVALID: Final[str] = "策略代码无效: {msg}"
+    STRATEGY_FORBIDDEN_IMPORT: Final[str] = "禁止引入模块: {module} (仅允许: math, random, etc.)"
     
     # ============ 回测相关 ============
     BACKTEST_DATA_EMPTY: Final[str] = "回测数据为空"

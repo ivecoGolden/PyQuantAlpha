@@ -41,10 +41,13 @@ ALLOWED_NAMES = {
     'order', 'close', 'get_position', 'equity'
 }
 
-# 禁止的 AST 节点类型
+# 允许的安全模块
+SAFE_MODULES = {
+    'math', 'random', 'statistics', 'collections', 'datetime', 'time', 'itertools', 'functools', 'typing'
+}
+
+# 禁止的 AST 节点类型 (不再禁止 Import/ImportFrom)
 FORBIDDEN_NODES = {
-    ast.Import,
-    ast.ImportFrom,
     ast.Global,
     ast.Nonlocal,
     ast.AsyncFunctionDef,
@@ -56,7 +59,7 @@ FORBIDDEN_NODES = {
 # 禁止的函数调用
 FORBIDDEN_CALLS = {
     'exec', 'eval', 'compile', 'open', 'input',
-    '__import__', 'globals', 'locals', 'vars',
+    'globals', 'locals', 'vars',
     'getattr', 'setattr', 'delattr', 'hasattr',
     'exit', 'quit', 'breakpoint'
 }
@@ -84,6 +87,12 @@ def _collect_defined_names(tree: ast.Module) -> set:
     return names
 
 
+def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+    """安全导入函数 (Shim)"""
+    if name in SAFE_MODULES:
+        return __import__(name, globals, locals, fromlist, level)
+    raise ImportError(f"Importing '{name}' is forbidden. Allowed: {SAFE_MODULES}")
+
 def _create_safe_globals() -> dict:
     """创建安全的执行环境
     
@@ -94,6 +103,7 @@ def _create_safe_globals() -> dict:
     safe_builtins = {
         '__build_class__': builtins.__build_class__,
         '__name__': '__main__',
+        '__import__': _safe_import,  # 注入安全导入函数
     }
     
     # 添加允许的内置函数
@@ -173,13 +183,23 @@ def validate_strategy_code(code: str) -> Tuple[bool, str]:
     if "on_bar" not in methods:
         return False, ErrorMessage.STRATEGY_MISSING_ON_BAR
     
-    # 5. 检查禁止的节点
+    # 5. 检查导入安全性
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name not in SAFE_MODULES:
+                    return False, ErrorMessage.STRATEGY_FORBIDDEN_IMPORT.format(module=alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module not in SAFE_MODULES:
+                return False, ErrorMessage.STRATEGY_FORBIDDEN_IMPORT.format(module=node.module)
+
+    # 6. 检查禁止的节点
     for node in ast.walk(tree):
         if type(node) in FORBIDDEN_NODES:
             node_name = type(node).__name__
             return False, ErrorMessage.STRATEGY_FORBIDDEN_NODE.format(node=node_name)
     
-    # 6. 检查禁止的函数调用
+    # 7. 检查禁止的函数调用
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name):
