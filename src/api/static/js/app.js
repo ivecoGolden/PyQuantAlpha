@@ -31,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Globals
     let currentCode = "";
-    let currentSymbol = "BTCUSDT";
+    let currentSymbol = null;
 
     // Elements
     const chatForm = document.getElementById('chat-form');
@@ -74,7 +74,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // 更新交易对显示（从策略中提取）
                 if (res.symbols && res.symbols.length > 0) {
-                    currentSymbol = res.symbols[0];
+                    // Phase 2 Multi-asset fix: Join symbols with comma
+                    currentSymbol = res.symbols.join(',');
                     document.getElementById('bt-symbol').textContent = currentSymbol;
                     document.getElementById('chart-symbol').textContent = currentSymbol;
                 }
@@ -120,7 +121,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Params - symbol 从 span 读取
-        const symbol = document.getElementById('bt-symbol').textContent;
+        const symbolText = document.getElementById('bt-symbol').textContent.trim();
+        if (!symbolText || symbolText === '--') {
+            alert("未检测到交易对，请先让 AI 生成策略");
+            return;
+        }
+
+        const symbol = symbolText;
         const interval = document.getElementById('bt-interval').value;
         const days = document.getElementById('bt-days').value;
 

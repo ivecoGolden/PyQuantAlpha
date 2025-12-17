@@ -190,8 +190,11 @@
                                 <span class="text-sm font-semibold text-gray-300">配置</span>
                             </div>
                             <div class="flex gap-2 items-center">
-                                <span id="bt-symbol"
-                                    class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-center uppercase text-blue-400 font-medium min-w-[60px]">BTCUSDT</span>
+                                <div
+                                    class="flex items-center gap-1.5 px-2 py-1 bg-gray-900/50 border border-gray-800 rounded">
+                                    <span class="text-xs text-gray-500">Target:</span>
+                                    <span id="bt-symbol" class="text-xs font-mono text-blue-400">--</span>
+                                </div>
                                 <select
                                     class="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs focus:border-blue-500 outline-none"
                                     id="bt-interval">
