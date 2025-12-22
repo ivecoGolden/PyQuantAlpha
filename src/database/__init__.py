@@ -13,11 +13,13 @@ from .database import (
     close_db,
     DATABASE_PATH,
 )
-from .models import Candlestick
+from .models import Candlestick, FundingRate, MarketSentiment
 
 __all__ = [
     "Base",
     "Candlestick",
+    "FundingRate",
+    "MarketSentiment",
     "get_engine",
     "get_session_factory",
     "get_session",

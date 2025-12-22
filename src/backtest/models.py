@@ -3,7 +3,7 @@
 回测数据模型
 
 核心模型：
-- Order: 订单（市价、限价单）
+- Order: 订单（市价/限价/止损/止损限价）
 - Trade: 成交记录
 - Position: 持仓（支持多/空）
 - BacktestConfig: 回测配置
@@ -11,7 +11,7 @@
 
 枚举类型：
 - OrderSide: BUY / SELL
-- OrderType: MARKET / LIMIT
+- OrderType: MARKET / LIMIT / STOP / STOP_LIMIT
 - OrderStatus: CREATED / SUBMITTED / ACCEPTED / PARTIAL / FILLED / CANCELED / REJECTED / EXPIRED
 """
 

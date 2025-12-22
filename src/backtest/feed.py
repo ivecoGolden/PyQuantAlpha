@@ -16,9 +16,10 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Iterator, List, Optional, Union
+from typing import Any, Dict, Iterator, List, Optional, Union
 
 from src.data.models import Bar
+from src.data.binance import INTERVAL_MS
 
 
 class DataFeed(ABC):
@@ -164,6 +165,99 @@ class MultiFeed(DataFeed):
         return len(self._aligned_data)
 
 
+class TimeframeAlignedFeed(DataFeed):
+    """多周期对齐数据源
+    
+    确保高频率数据在低频率步进时不会产生"未来函数"。
+    例如：在 1m 回测中，1h 的 Bar 只有在整点结束后的下一分钟才对策略可见。
+    
+    Args:
+        base_feed: 基础频率对（通常是 1m），Dict[str, List[Bar]]
+        other_feeds: 其他频率对，Dict[str, Dict[str, List[Bar]]] 
+                     格式: {interval: {symbol: List[Bar]}}
+    """
+    
+    def __init__(self, base_feed: Dict[str, List[Bar]], other_feeds: Dict[str, Dict[str, List[Bar]]]):
+        self._base_data = base_feed
+        self._other_data = other_feeds
+        self._symbols = list(base_feed.keys())
+        self._aligned_data: List[Dict[str, Union[Bar, Dict[str, Bar]]]] = []
+        self._align_timeframes()
+
+    def _align_timeframes(self) -> None:
+        """执行多周期对齐
+        
+        对齐逻辑：
+        1. 以 base_feed 的时间戳作为主时间轴
+        2. 对于每个主时间轴点 T：
+           - 包含当前 T 的 base Bar
+           - 对于其他周期 interval，查找最高时间戳但其 close_time < T 的 Bar
+        """
+        # 获取基础频率数据（通常所有交易对时间对齐，如果不对齐则取并集）
+        ts_sets = []
+        for bars in self._base_data.values():
+            ts_sets.append({b.timestamp for b in bars})
+        
+        main_timeline = sorted(set.union(*ts_sets))
+        
+        # 预索引所有数据
+        # base_map: {symbol: {ts: Bar}}
+        base_map = {sym: {b.timestamp: b for b in bars} for sym, bars in self._base_data.items()}
+        
+        # others_map: {interval: {symbol: List[Bar]}} -> 已正序排列
+        # 为了高效查找，可以使用已经排好序的列表进行二分查找，或者简单的缓存索引
+        
+        last_seen_other: Dict[str, Dict[str, Bar]] = {} # {interval: {symbol: Bar}}
+
+        for ts in main_timeline:
+            step_data = {}
+            # 1. 基础周期数据（当前 Bar）
+            base_slice = {}
+            for sym in self._symbols:
+                bar = base_map[sym].get(ts)
+                if bar:
+                    base_slice[sym] = bar
+            
+            step_data["base"] = base_slice if len(base_slice) > 1 else list(base_slice.values())[0] if base_slice else None
+            
+            # 2. 其他周期数据（已结束的最新 Bar）
+            for interval, symbol_dict in self._other_data.items():
+                if interval not in last_seen_other:
+                    last_seen_other[interval] = {}
+                
+                interval_ms = INTERVAL_MS.get(interval, 0)
+                
+                for sym, bars in symbol_dict.items():
+                    # 查找在该时间点 ts 之前已经"结束"的最新的 Bar
+                    # 结束条件：bar.timestamp + interval_ms <= ts
+                    # (由于 bars 是正序的，我们可以优化查找)
+                    current_match = None
+                    for b in bars:
+                        if b.timestamp + interval_ms <= ts:
+                            current_match = b
+                        else:
+                            break
+                    
+                    if current_match:
+                        last_seen_other[interval][sym] = current_match
+                
+                if last_seen_other[interval]:
+                    # 存入 step_data， key 格式如 "1h"
+                    step_data[interval] = last_seen_other[interval].copy()
+
+            self._aligned_data.append(step_data)
+
+    @property
+    def symbols(self) -> List[str]:
+        return self._symbols
+
+    def __iter__(self) -> Iterator[Dict[str, Any]]:
+        return iter(self._aligned_data)
+
+    def __len__(self) -> int:
+        return len(self._aligned_data)
+
+
 def create_feed(
     data: Union[List[Bar], Dict[str, List[Bar]]],
     symbol: str = None
@@ -176,14 +270,20 @@ def create_feed(
         
     Returns:
         SingleFeed 或 MultiFeed
-        
-    Example:
-        >>> feed = create_feed(btc_bars, symbol="BTCUSDT")  # 单资产
-        >>> feed = create_feed({"BTCUSDT": btc_bars, "ETHUSDT": eth_bars})  # 多资产
     """
     if isinstance(data, list):
         return SingleFeed(data, symbol=symbol)
     elif isinstance(data, dict):
+        # 检查是否是多周期嵌套格式 { "1m": {...}, "1h": {...} }
+        # 如果是这种格式，创建 TimeframeAlignedFeed
+        if any(k in INTERVAL_MS for k in data.keys()) and isinstance(list(data.values())[0], dict):
+            # 找到基础频率（通常是最小的）
+            intervals = sorted([k for k in data.keys() if k in INTERVAL_MS], key=lambda x: INTERVAL_MS[x])
+            base_interval = intervals[0]
+            base_data = data[base_interval]
+            other_data = {itv: data[itv] for itv in intervals[1:]}
+            return TimeframeAlignedFeed(base_data, other_data)
+            
         feeds = {sym: SingleFeed(bars, symbol=sym) for sym, bars in data.items()}
         return MultiFeed(feeds)
     else:

@@ -25,20 +25,24 @@ from src.messages import ErrorMessage
 ALLOWED_BUILTINS = {
     'True', 'False', 'None',
     'abs', 'max', 'min', 'len', 'range', 'round',
-    'int', 'float', 'str', 'bool', 'list', 'dict',
+    'int', 'float', 'str', 'bool', 'list', 'dict', 'tuple', 'set',
     'print', 'sum', 'sorted', 'enumerate', 'zip',
-    'isinstance'
+    'isinstance', 'any', 'all', 'map', 'filter'
 }
 
 # 允许的自定义名称（内置指标 + 策略接口）
+# 注意：此列表仅用于文档目的，实际通过沙箱注入
 ALLOWED_NAMES = {
     'Strategy', 'self', 'bar',
-    # 内置指标
+    # 基础指标
     'EMA', 'SMA', 'RSI', 'MACD', 'ATR', 'BollingerBands',
+    # 高级指标
+    'ADX', 'Stochastic', 'WilliamsR', 'CCI', 'OBV', 'Ichimoku', 'SentimentDisparity',
     # 指标结果类
-    'MACDResult', 'BollingerResult',
+    'MACDResult', 'BollingerResult', 'StochasticResult', 'IchimokuResult',
     # 策略接口
-    'order', 'close', 'get_position', 'equity'
+    'order', 'close', 'get_position', 'get_cash', 'get_equity',
+    'get_bars', 'get_bar', 'get_funding_rates', 'get_sentiment'
 }
 
 # 允许的安全模块
@@ -120,14 +124,23 @@ def _create_safe_globals() -> dict:
         from src.indicators.ma import SMA, EMA
         from src.indicators.oscillator import RSI, MACD
         from src.indicators.volatility import ATR, BollingerBands
+        from src.indicators.advanced import (
+            ADX, Stochastic, WilliamsR, CCI, OBV, Ichimoku, SentimentDisparity
+        )
         # 注入 Strategy 基类（用于类型提示和继承，虽然运行时动态注入 API）
         from src.backtest.strategy import Strategy
         
         indicators = {
+            # 基础指标
             'SMA': SMA, 'EMA': EMA,
             'RSI': RSI, 'MACD': MACD,
             'ATR': ATR, 'BollingerBands': BollingerBands,
-            'Strategy': Strategy  # 允许显式继承
+            # 高级指标
+            'ADX': ADX, 'Stochastic': Stochastic, 'WilliamsR': WilliamsR,
+            'CCI': CCI, 'OBV': OBV, 'Ichimoku': Ichimoku,
+            'SentimentDisparity': SentimentDisparity,
+            # 策略基类
+            'Strategy': Strategy
         }
         safe_globals.update(indicators)
     except ImportError:
@@ -176,8 +189,11 @@ def validate_strategy_code(code: str) -> Tuple[bool, str]:
     
     strategy_class = strategy_classes[0]
     
-    # 4. 检查必要方法
-    methods = {node.name for node in strategy_class.body if isinstance(node, ast.FunctionDef)}
+    # 4. 检查必要方法 (支持同步和异步方法)
+    methods = {
+        node.name for node in strategy_class.body 
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
     if "init" not in methods:
         return False, ErrorMessage.STRATEGY_MISSING_INIT
     if "on_bar" not in methods:

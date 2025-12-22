@@ -12,7 +12,7 @@ import asyncio
 import json
 import logging
 import uuid
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from datetime import datetime
 
 from src.data.models import Bar
@@ -41,7 +41,7 @@ class BacktestManager:
     async def start_backtest(
         self,
         strategy_code: str,
-        data: list[Bar],
+        data: List[Bar],
         config: dict = None
     ) -> str:
         """启动异步回测任务
@@ -122,7 +122,9 @@ class BacktestManager:
             # 兼容性处理：BacktestEngine 是同步的
             # 如果数据量大，应该使用 loop.run_in_executor
             
-            engine = BacktestEngine() # TODO: config
+            from src.backtest.models import BacktestConfig
+            bt_config = BacktestConfig(**(config or {})) if config else BacktestConfig()
+            engine = BacktestEngine(config=bt_config)
             
             # 包装 on_progress 以适应 asyncio
             # 由于 run_in_executor 不支持回调中的异步，改为定期检查或直接放入 queue (queue 是线程安全的吗? asyncio.Queue 不是线程安全的)
@@ -178,11 +180,15 @@ class BacktestManager:
                             "timestamp": t.timestamp
                         } for t in result.trades
                     ],
-                    # Phase 2.1: 可视化数据
-                    "visuals": {
-                        "logs": engine._logger.order_logs,
-                        "trades": engine._logger.trade_logs
-                    }
+                    # Phase 2.1: 可视化数据（从 result.logs 中获取）
+                    "logs": [
+                        {
+                            "timestamp": entry.timestamp,
+                            "orders": entry.orders,
+                            "positions": entry.positions,
+                            "equity": entry.equity
+                        } for entry in result.logs
+                    ]
                 }
             })
             

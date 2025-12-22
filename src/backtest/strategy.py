@@ -134,6 +134,31 @@ class Strategy(ABC):
         """
         raise NotImplementedError("get_bar() 由 Engine 在运行时注入")
     
+    def get_funding_rates(self, symbol: str, days: int = 7) -> list:
+        """获取资金费率历史
+        
+        Args:
+            symbol: 交易对，如 "BTCUSDT"
+            days: 天数
+            
+        Returns:
+            资金费率数据列表，每项包含属性: symbol, timestamp, funding_rate, mark_price
+        """
+        raise NotImplementedError("get_funding_rates() 由 Engine 在运行时注入")
+    
+    def get_sentiment(self, symbol: str, days: int = 1, period: str = "1h") -> list:
+        """获取市场情绪数据
+        
+        Args:
+            symbol: 交易对，如 "BTCUSDT"
+            days: 天数
+            period: 数据周期，如 "5m", "15m", "30m", "1h", "4h"
+            
+        Returns:
+            市场情绪数据列表，每项包含属性: symbol, timestamp, long_short_ratio
+        """
+        raise NotImplementedError("get_sentiment() 由 Engine 在运行时注入")
+    
     # ============ 策略回调（可选实现） ============
     
     def notify_order(self, order: "Order") -> None:

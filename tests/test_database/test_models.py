@@ -173,3 +173,73 @@ class TestCandlestickCRUD:
             assert len(records) == 1
             assert records[0].close == Decimal("2080.0")
             assert records[0].high == Decimal("2100.0")
+
+
+class TestFundingRateModel:
+    """测试 FundingRate ORM 模型"""
+    
+    def test_tablename(self):
+        """测试表名"""
+        from src.database.models import FundingRate
+        assert FundingRate.__tablename__ == "funding_rates"
+    
+    def test_create_instance(self):
+        """测试创建实例"""
+        from src.database.models import FundingRate
+        rate = FundingRate(
+            symbol="BTCUSDT",
+            timestamp=1700000000000,
+            funding_rate=Decimal("0.0001"),
+            mark_price=Decimal("35000.0")
+        )
+        assert rate.symbol == "BTCUSDT"
+        assert rate.funding_rate == Decimal("0.0001")
+    
+    def test_repr(self):
+        """测试字符串表示"""
+        from src.database.models import FundingRate
+        rate = FundingRate(
+            symbol="ETHUSDT",
+            timestamp=1700000000000,
+            funding_rate=Decimal("0.00015"),
+            mark_price=Decimal("2000.0")
+        )
+        repr_str = repr(rate)
+        assert "ETHUSDT" in repr_str
+        assert "0.00015" in repr_str
+
+
+class TestMarketSentimentModel:
+    """测试 MarketSentiment ORM 模型"""
+    
+    def test_tablename(self):
+        """测试表名"""
+        from src.database.models import MarketSentiment
+        assert MarketSentiment.__tablename__ == "market_sentiment"
+    
+    def test_create_instance(self):
+        """测试创建实例"""
+        from src.database.models import MarketSentiment
+        sentiment = MarketSentiment(
+            symbol="BTCUSDT",
+            timestamp=1700000000000,
+            long_short_ratio=Decimal("1.25"),
+            long_account_ratio=Decimal("0.5556"),
+            short_account_ratio=Decimal("0.4444")
+        )
+        assert sentiment.symbol == "BTCUSDT"
+        assert sentiment.long_short_ratio == Decimal("1.25")
+    
+    def test_repr(self):
+        """测试字符串表示"""
+        from src.database.models import MarketSentiment
+        sentiment = MarketSentiment(
+            symbol="BTCUSDT",
+            timestamp=1700000000000,
+            long_short_ratio=Decimal("0.85"),
+            long_account_ratio=Decimal("0.46"),
+            short_account_ratio=Decimal("0.54")
+        )
+        repr_str = repr(sentiment)
+        assert "BTCUSDT" in repr_str
+        assert "0.85" in repr_str

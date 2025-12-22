@@ -309,3 +309,195 @@ class MarketDataRepository:
             missing.append((last_ts + 1, end_time))
         
         return missing
+    
+    # ============ 衍生数据方法 ============
+    
+    async def get_funding_rates(
+        self,
+        symbol: str,
+        start_time: int,
+        end_time: int,
+    ) -> List["FundingRateData"]:
+        """获取资金费率历史（透明同步）
+        
+        优先从本地数据库读取，缺失时从 Binance Futures API 补全。
+        
+        Args:
+            symbol: 交易对，如 "BTCUSDT"
+            start_time: 开始时间戳 (毫秒)
+            end_time: 结束时间戳 (毫秒)
+            
+        Returns:
+            资金费率数据列表
+        """
+        from src.database import FundingRate
+        from src.data.binance_futures import BinanceFuturesClient, FundingRateData
+        
+        async with get_session() as session:
+            # 1. 查询本地数据
+            stmt = select(FundingRate).where(
+                and_(
+                    FundingRate.symbol == symbol,
+                    FundingRate.timestamp >= start_time,
+                    FundingRate.timestamp <= end_time
+                )
+            ).order_by(FundingRate.timestamp)
+            
+            result = await session.execute(stmt)
+            local_data = result.scalars().all()
+            
+            # 2. 检查是否需要补全
+            # 简化逻辑：如果本地数据为空或首尾时间不匹配，则从 API 拉取
+            need_sync = (
+                not local_data or
+                local_data[0].timestamp > start_time or
+                local_data[-1].timestamp < end_time
+            )
+            
+            if need_sync:
+                try:
+                    futures_client = BinanceFuturesClient()
+                    fetched = futures_client.get_funding_rate_history(
+                        symbol=symbol,
+                        start_time=start_time,
+                        end_time=end_time,
+                        limit=1000
+                    )
+                    
+                    # 3. 写入数据库
+                    if fetched:
+                        for item in fetched:
+                            stmt = sqlite_insert(FundingRate).values(
+                                symbol=item.symbol,
+                                timestamp=item.timestamp,
+                                funding_rate=Decimal(str(item.funding_rate)),
+                                mark_price=Decimal(str(item.mark_price))
+                            ).on_conflict_do_update(
+                                index_elements=["symbol", "timestamp"],
+                                set_={"funding_rate": Decimal(str(item.funding_rate))}
+                            )
+                            await session.execute(stmt)
+                        await session.commit()
+                        
+                        # 4. 重新查询
+                        result = await session.execute(
+                            select(FundingRate).where(
+                                and_(
+                                    FundingRate.symbol == symbol,
+                                    FundingRate.timestamp >= start_time,
+                                    FundingRate.timestamp <= end_time
+                                )
+                            ).order_by(FundingRate.timestamp)
+                        )
+                        local_data = result.scalars().all()
+                        
+                except Exception as e:
+                    logger.warning(f"获取资金费率失败: {e}")
+            
+            # 转换为数据类
+            return [
+                FundingRateData(
+                    symbol=item.symbol,
+                    timestamp=item.timestamp,
+                    funding_rate=float(item.funding_rate),
+                    mark_price=float(item.mark_price)
+                )
+                for item in local_data
+            ]
+    
+    async def get_sentiment(
+        self,
+        symbol: str,
+        start_time: int,
+        end_time: int,
+        period: str = "1h"
+    ) -> List["SentimentData"]:
+        """获取市场情绪数据（透明同步）
+        
+        优先从本地数据库读取，缺失时从 Binance Futures API 补全。
+        
+        Args:
+            symbol: 交易对，如 "BTCUSDT"
+            start_time: 开始时间戳 (毫秒)
+            end_time: 结束时间戳 (毫秒)
+            period: 统计周期，如 "1h", "4h"
+            
+        Returns:
+            市场情绪数据列表
+        """
+        from src.database import MarketSentiment
+        from src.data.binance_futures import BinanceFuturesClient, SentimentData
+        
+        async with get_session() as session:
+            # 1. 查询本地数据
+            stmt = select(MarketSentiment).where(
+                and_(
+                    MarketSentiment.symbol == symbol,
+                    MarketSentiment.timestamp >= start_time,
+                    MarketSentiment.timestamp <= end_time
+                )
+            ).order_by(MarketSentiment.timestamp)
+            
+            result = await session.execute(stmt)
+            local_data = result.scalars().all()
+            
+            # 2. 检查是否需要补全
+            need_sync = (
+                not local_data or
+                local_data[0].timestamp > start_time or
+                local_data[-1].timestamp < end_time
+            )
+            
+            if need_sync:
+                try:
+                    futures_client = BinanceFuturesClient()
+                    fetched = futures_client.get_long_short_ratio(
+                        symbol=symbol,
+                        period=period,
+                        start_time=start_time,
+                        end_time=end_time,
+                        limit=500
+                    )
+                    
+                    # 3. 写入数据库
+                    if fetched:
+                        for item in fetched:
+                            stmt = sqlite_insert(MarketSentiment).values(
+                                symbol=item.symbol,
+                                timestamp=item.timestamp,
+                                long_short_ratio=Decimal(str(item.long_short_ratio)),
+                                long_account_ratio=Decimal(str(item.long_account_ratio)),
+                                short_account_ratio=Decimal(str(item.short_account_ratio))
+                            ).on_conflict_do_update(
+                                index_elements=["symbol", "timestamp"],
+                                set_={"long_short_ratio": Decimal(str(item.long_short_ratio))}
+                            )
+                            await session.execute(stmt)
+                        await session.commit()
+                        
+                        # 4. 重新查询
+                        result = await session.execute(
+                            select(MarketSentiment).where(
+                                and_(
+                                    MarketSentiment.symbol == symbol,
+                                    MarketSentiment.timestamp >= start_time,
+                                    MarketSentiment.timestamp <= end_time
+                                )
+                            ).order_by(MarketSentiment.timestamp)
+                        )
+                        local_data = result.scalars().all()
+                        
+                except Exception as e:
+                    logger.warning(f"获取市场情绪失败: {e}")
+            
+            # 转换为数据类
+            return [
+                SentimentData(
+                    symbol=item.symbol,
+                    timestamp=item.timestamp,
+                    long_short_ratio=float(item.long_short_ratio),
+                    long_account_ratio=float(item.long_account_ratio),
+                    short_account_ratio=float(item.short_account_ratio)
+                )
+                for item in local_data
+            ]

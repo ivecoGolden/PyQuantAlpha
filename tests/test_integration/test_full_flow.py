@@ -11,7 +11,7 @@ from src.api.routes.strategy import get_llm_dependency
 from src.data import Bar
 from src.ai.base import LLMResponse
 
-# Mock 依赖
+# Mock 依赖 (Global mocks used by overrides)
 mock_binance = MagicMock()
 mock_llm = MagicMock()
 
@@ -20,10 +20,6 @@ def override_get_binance_client():
 
 def override_get_llm_client():
     return mock_llm
-
-# 应用覆盖
-app.dependency_overrides[get_binance_client] = override_get_binance_client
-app.dependency_overrides[get_llm_dependency] = override_get_llm_client
 
 TEST_STRATEGY_CODE = '''class Strategy:
     def init(self):
@@ -58,7 +54,16 @@ def setup_mocks():
     )
 
 @pytest.fixture
-async def client():
+def apply_overrides():
+    """应用并清理依赖覆盖"""
+    app.dependency_overrides[get_binance_client] = override_get_binance_client
+    app.dependency_overrides[get_llm_dependency] = override_get_llm_client
+    yield
+    # 清理
+    app.dependency_overrides.clear()
+
+@pytest.fixture
+async def client(apply_overrides):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
 
@@ -85,6 +90,11 @@ class TestSystemIntegration:
         assert gen_res.status_code == 200
         gen_data = gen_res.json()
         assert gen_data["type"] == "strategy"
+        
+        # 加强断言，输出错误原因
+        if not gen_data.get("is_valid"):
+            pytest.fail(f"策略验证失败: {gen_data.get('error', 'Unknown error')} | Code: {gen_data.get('content')}")
+            
         assert gen_data["is_valid"] is True
         code = gen_data["content"]
         assert "class Strategy" in code

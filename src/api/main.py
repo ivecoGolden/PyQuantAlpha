@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from src.api.routes import health, klines, strategy
+from src.api.routes import health, klines, strategy, derivatives
 from src.core.logging import setup_logging, logger
 from src.config.settings import settings
 
@@ -51,6 +51,7 @@ from fastapi.staticfiles import StaticFiles
 app.include_router(health.router, tags=["健康检查"])
 app.include_router(klines.router, prefix="/api", tags=["数据"])
 app.include_router(strategy.router, prefix="/api", tags=["策略"])
+app.include_router(derivatives.router, tags=["衍生品"])
 
 from fastapi.responses import FileResponse
 

@@ -9,6 +9,7 @@
 - SSE 实时进度推送
 - 策略回调钩子 (notify_order/notify_trade)
 - DataFeed 数据抽象（支持单/多资产）
+- 衍生品数据访问（资金费率、市场情绪）
 
 核心组件：
 - BacktestEngine: 回测引擎核心

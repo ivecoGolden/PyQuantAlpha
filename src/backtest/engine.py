@@ -19,6 +19,7 @@ import logging
 from typing import List, Optional, Any, Callable, Union, Dict
 
 from src.data.models import Bar
+from src.data.repository import MarketDataRepository
 from src.messages import ErrorMessage
 
 from .loader import execute_strategy_code
@@ -80,6 +81,9 @@ class BacktestEngine:
         self._bar_history: List[Bar] = []  # K 线历史缓存（供策略回溯）
         self._symbols: set = set()         # 策略使用的交易对
         self._logger = BacktestLogger(enabled=self.enable_logging)
+        
+        # 衍生品数据仓库（同步访问）
+        self._market_repo = MarketDataRepository()
     
     def run(
         self,
@@ -221,6 +225,10 @@ class BacktestEngine:
         # 数据访问 API（供策略回溯历史数据）
         self._strategy.get_bars = self._api_get_bars
         self._strategy.get_bar = self._api_get_bar
+        
+        # 衍生品数据 API（同步版本）
+        self._strategy.get_funding_rates = self._api_get_funding_rates
+        self._strategy.get_sentiment = self._api_get_sentiment
         
         # Phase 2.1: 策略回调钩子
         # 如果策略没有定义这些方法，则使用空占位
@@ -420,3 +428,65 @@ class BacktestEngine:
                 
         except IndexError:
             return None
+    
+    def _api_get_funding_rates(self, symbol: str, days: int = 7) -> list:
+        """获取资金费率历史（同步版本）
+        
+        Args:
+            symbol: 交易对，如 "BTCUSDT"
+            days: 天数
+            
+        Returns:
+            资金费率数据列表，每项包含属性: symbol, timestamp, funding_rate, mark_price
+        """
+        import asyncio
+        
+        # 计算时间范围
+        end_time = self._current_timestamp if self._current_timestamp else int(__import__('time').time() * 1000)
+        start_time = end_time - days * 24 * 60 * 60 * 1000
+        
+        try:
+            # 同步包装异步方法
+            return asyncio.get_event_loop().run_until_complete(
+                self._market_repo.get_funding_rates(symbol, start_time, end_time)
+            )
+        except RuntimeError:
+            # 如果没有事件循环，创建一个新的
+            return asyncio.run(
+                self._market_repo.get_funding_rates(symbol, start_time, end_time)
+            )
+        except Exception as e:
+            logger.warning(f"获取资金费率失败: {e}")
+            return []
+    
+    def _api_get_sentiment(self, symbol: str, days: int = 1, period: str = "1h") -> list:
+        """获取市场情绪数据（同步版本）
+        
+        Args:
+            symbol: 交易对，如 "BTCUSDT"
+            days: 天数
+            period: 数据周期，如 "5m", "15m", "30m", "1h", "4h"
+            
+        Returns:
+            市场情绪数据列表，每项包含属性: symbol, timestamp, long_short_ratio
+        """
+        import asyncio
+        
+        # 计算时间范围
+        end_time = self._current_timestamp if self._current_timestamp else int(__import__('time').time() * 1000)
+        start_time = end_time - days * 24 * 60 * 60 * 1000
+        
+        try:
+            # 同步包装异步方法
+            return asyncio.get_event_loop().run_until_complete(
+                self._market_repo.get_sentiment(symbol, start_time, end_time, period)
+            )
+        except RuntimeError:
+            # 如果没有事件循环，创建一个新的
+            return asyncio.run(
+                self._market_repo.get_sentiment(symbol, start_time, end_time, period)
+            )
+        except Exception as e:
+            logger.warning(f"获取市场情绪失败: {e}")
+            return []
+

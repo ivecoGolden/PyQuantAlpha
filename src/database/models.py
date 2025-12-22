@@ -118,3 +118,100 @@ class Candlestick(Base):
             f"close={self.close}"
             f")>"
         )
+
+
+class FundingRate(Base):
+    """资金费率 ORM 模型
+    
+    存储合约市场的资金费率历史数据。
+    资金费率每 8 小时结算一次。
+    
+    Attributes:
+        symbol: 交易对，如 "BTCUSDT"
+        timestamp: 结算时间戳 (毫秒)
+        funding_rate: 资金费率
+        mark_price: 标记价格
+    """
+    
+    __tablename__ = "funding_rates"
+    
+    symbol: Mapped[str] = mapped_column(
+        String(20),
+        primary_key=True,
+        comment="交易对"
+    )
+    timestamp: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        comment="结算时间戳 (ms)"
+    )
+    funding_rate: Mapped[Decimal] = mapped_column(
+        Numeric(18, 8),
+        nullable=False,
+        comment="资金费率"
+    )
+    mark_price: Mapped[Decimal] = mapped_column(
+        Numeric(18, 8),
+        nullable=False,
+        comment="标记价格"
+    )
+    
+    def __repr__(self) -> str:
+        return (
+            f"<FundingRate("
+            f"symbol={self.symbol!r}, "
+            f"timestamp={self.timestamp}, "
+            f"rate={self.funding_rate}"
+            f")>"
+        )
+
+
+class MarketSentiment(Base):
+    """市场情绪 ORM 模型
+    
+    存储全局多空账户比数据。
+    
+    Attributes:
+        symbol: 交易对，如 "BTCUSDT"
+        timestamp: 时间戳 (毫秒)
+        long_short_ratio: 多空账户比
+        long_account_ratio: 多头账户占比
+        short_account_ratio: 空头账户占比
+    """
+    
+    __tablename__ = "market_sentiment"
+    
+    symbol: Mapped[str] = mapped_column(
+        String(20),
+        primary_key=True,
+        comment="交易对"
+    )
+    timestamp: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        comment="时间戳 (ms)"
+    )
+    long_short_ratio: Mapped[Decimal] = mapped_column(
+        Numeric(10, 4),
+        nullable=False,
+        comment="多空账户比"
+    )
+    long_account_ratio: Mapped[Decimal] = mapped_column(
+        Numeric(10, 4),
+        nullable=False,
+        comment="多头账户占比"
+    )
+    short_account_ratio: Mapped[Decimal] = mapped_column(
+        Numeric(10, 4),
+        nullable=False,
+        comment="空头账户占比"
+    )
+    
+    def __repr__(self) -> str:
+        return (
+            f"<MarketSentiment("
+            f"symbol={self.symbol!r}, "
+            f"timestamp={self.timestamp}, "
+            f"long_short_ratio={self.long_short_ratio}"
+            f")>"
+        )
