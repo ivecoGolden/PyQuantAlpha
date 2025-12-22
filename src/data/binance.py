@@ -324,7 +324,23 @@ class BinanceClient(BaseExchangeClient):
         return all_bars
     
     def _parse_klines(self, raw_data: list) -> List[Bar]:
-        """解析 K 线数据"""
+        """解析 K 线数据
+        
+        币安 API 返回格式 (11 个字段):
+        [
+            0: 开盘时间 (timestamp)
+            1: 开盘价 (open)
+            2: 最高价 (high)
+            3: 最低价 (low)
+            4: 收盘价 (close)
+            5: 成交量 (volume)
+            6: 收盘时间 (close_time)
+            7: 成交额 (quote_volume)
+            8: 成交笔数 (trade_count)
+            9: 主动买入量 (taker_buy_base)
+            10: 主动买入额 (taker_buy_quote)
+        ]
+        """
         return [
             Bar(
                 timestamp=item[0],
@@ -332,7 +348,12 @@ class BinanceClient(BaseExchangeClient):
                 high=float(item[2]),
                 low=float(item[3]),
                 close=float(item[4]),
-                volume=float(item[5])
+                volume=float(item[5]),
+                close_time=item[6],
+                quote_volume=float(item[7]),
+                trade_count=int(item[8]),
+                taker_buy_base=float(item[9]),
+                taker_buy_quote=float(item[10]),
             )
             for item in raw_data
         ]

@@ -3,16 +3,17 @@
 """API 端点测试"""
 
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 from src.api.main import app
-from src.api.routes.klines import get_binance_client
+from src.api.routes.klines import get_binance_client, get_repository
 from src.api.routes.strategy import get_llm_dependency
 from src.data import Bar
 
 # 创建 Mock 对象 (Global scope to be accessible, but reset in fixture)
 mock_binance = MagicMock()
 mock_llm = MagicMock()
+mock_repo = MagicMock()
 
 @pytest.fixture
 def client():
@@ -20,10 +21,12 @@ def client():
     # 1. Setup Overrides
     app.dependency_overrides[get_binance_client] = lambda: mock_binance
     app.dependency_overrides[get_llm_dependency] = lambda: mock_llm
+    app.dependency_overrides[get_repository] = lambda: mock_repo
     
     # 2. Reset Mocks
     mock_binance.reset_mock()
     mock_llm.reset_mock()
+    mock_repo.reset_mock()
     
     # 设置默认返回值: Binance
     mock_binance.get_klines.return_value = [
@@ -33,6 +36,12 @@ def client():
     mock_binance.get_historical_klines.return_value = [
          Bar(timestamp=1600000000000, open=100.0, high=110.0, low=90.0, close=105.0, volume=1000.0)
     ]
+    
+    # 设置默认返回值: Repository (async)
+    mock_repo.get_klines = AsyncMock(return_value=([
+        Bar(timestamp=1000 + i*3600000, open=10, high=11, low=9, close=10, volume=100)
+        for i in range(100)
+    ], True))
     
     # 3. Create Client
     with TestClient(app) as test_client:
@@ -110,11 +119,7 @@ class Strategy:
     def init(self): pass
     def on_bar(self, bar): pass
 '''
-        # Mock getting data for backtest (using get_historical_klines now)
-        mock_binance.get_historical_klines.return_value = [
-            Bar(timestamp=1000, open=10, high=11, low=9, close=10, volume=100)
-            for _ in range(100)
-        ]
+        # mock_repo.get_klines 已在 fixture 中设置默认返回值
 
         response = client.post("/api/backtest/run", json={
             "code": valid_code,
@@ -126,8 +131,8 @@ class Strategy:
         data = response.json()
         assert "task_id" in data
         
-        # Verify get_historical_klines called
-        mock_binance.get_historical_klines.assert_called()
+        # Verify repo.get_klines called
+        mock_repo.get_klines.assert_called()
 
     def test_backtest_requires_code(self, client):
         """测试 code 参数必填"""
@@ -146,8 +151,8 @@ class Strategy:
         """测试无效交易对返回 400"""
         valid_code = "class Strategy:\n    def init(self): pass\n    def on_bar(self, bar): pass"
         
-        # 模拟抛出 ValueError on get_historical_klines
-        mock_binance.get_historical_klines.side_effect = ValueError("Invalid symbol")
+        # 模拟 repo.get_klines 抛出 ValueError
+        mock_repo.get_klines = AsyncMock(side_effect=ValueError("Invalid symbol"))
         
         response = client.post("/api/backtest/run", json={
             "code": valid_code,
@@ -160,4 +165,7 @@ class Strategy:
         assert "Invalid symbol" in response.json()["detail"]
         
         # 恢复
-        mock_binance.get_historical_klines.side_effect = None
+        mock_repo.get_klines = AsyncMock(return_value=([
+            Bar(timestamp=1000 + i*3600000, open=10, high=11, low=9, close=10, volume=100)
+            for i in range(100)
+        ], True))

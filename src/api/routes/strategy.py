@@ -174,42 +174,44 @@ async def explain_strategy_endpoint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=ErrorMessage.HTTP_AI_GENERATE_FAILED.format(error=str(e)))
 
-from src.api.routes.klines import get_binance_client
+from src.api.routes.klines import get_binance_client, get_repository
+import time
 
 @router.post("/backtest/run", response_model=BacktestStartResponse)
 async def run_backtest(
     req: BacktestRequest,
-    data_client: BinanceClient = Depends(get_binance_client)
+    repo = Depends(get_repository)
 ):
-    """启动回测任务 (异步)"""
+    """启动回测任务 (异步)
+    
+    使用 MarketDataRepository 实现透明缓存：
+    - 首次请求：从 Binance 拉取 + 写入本地 SQLite
+    - 后续请求：直接从本地读取（快 200+ 倍）
+    """
     # 1. 校验代码
     is_valid, msg = validate_strategy_code(req.code)
     if not is_valid:
         raise HTTPException(status_code=400, detail=ErrorMessage.STRATEGY_INVALID.format(msg=msg))
 
-    # 2. 获取数据
+    # 2. 计算时间范围
+    end_time = int(time.time() * 1000)
+    start_time = end_time - req.days * 24 * 3600 * 1000
+
+    # 3. 获取数据（透明缓存）
     try:
         if "," in req.symbol:
             # 多资产模式
             symbols = [s.strip() for s in req.symbol.split(",") if s.strip()]
             klines = {}
             for sym in symbols:
-                k = data_client.get_historical_klines(
-                    symbol=sym, 
-                    interval=req.interval, 
-                    days=req.days
-                )
-                if k:
-                    klines[sym] = k
+                bars, _ = await repo.get_klines(sym, req.interval, start_time, end_time)
+                if bars:
+                    klines[sym] = bars
             if not klines:
                 raise ValueError(ErrorMessage.BACKTEST_DATA_EMPTY)
         else:
             # 单资产模式
-            klines = data_client.get_historical_klines(
-                symbol=req.symbol, 
-                interval=req.interval, 
-                days=req.days
-            )
+            klines, _ = await repo.get_klines(req.symbol, req.interval, start_time, end_time)
     except ValueError as e:
         # 捕获无效交易对等错误
         raise HTTPException(status_code=400, detail=str(e))
@@ -219,7 +221,7 @@ async def run_backtest(
     if not klines:
         raise HTTPException(status_code=400, detail=ErrorMessage.BACKTEST_DATA_EMPTY)
 
-    # 3. 启动任务
+    # 4. 启动任务
     task_id = await _backtest_manager.start_backtest(req.code, klines)
     
     return BacktestStartResponse(

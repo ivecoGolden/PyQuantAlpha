@@ -36,10 +36,12 @@ class TestBinanceClientGetKlines:
     
     @pytest.fixture
     def mock_kline_data(self):
-        """模拟 Binance API 返回的 K 线数据"""
+        """模拟 Binance API 返回的 K 线数据 (全部 11 字段)"""
         return [
-            [1609459200000, "29000.0", "29500.0", "28800.0", "29300.0", "1000.0"],
-            [1609462800000, "29300.0", "29800.0", "29100.0", "29600.0", "1200.0"],
+            [1609459200000, "29000.0", "29500.0", "28800.0", "29300.0", "1000.0",
+             1609462799999, "29300000.0", 5000, "600.0", "17580000.0"],
+            [1609462800000, "29300.0", "29800.0", "29100.0", "29600.0", "1200.0",
+             1609466399999, "35520000.0", 6000, "720.0", "21312000.0"],
         ]
     
     @patch("src.data.binance.requests.get")
@@ -230,7 +232,8 @@ class TestBinanceClientChainSyntax:
         mock_response.status_code = 200
         mock_response.ok = True
         mock_response.json.return_value = [
-            [1609459200000, "29000.0", "29500.0", "28800.0", "29300.0", "1000.0"],
+            [1609459200000, "29000.0", "29500.0", "28800.0", "29300.0", "1000.0",
+             1609462799999, "29300000.0", 5000, "600.0", "17580000.0"],
         ]
         mock_get.return_value = mock_response
         
@@ -252,7 +255,8 @@ class TestBinanceClientChainSyntax:
         mock_response.status_code = 200
         mock_response.ok = True
         mock_response.json.return_value = [
-            [1609459200000, "29000.0", "29500.0", "28800.0", "29300.0", "1000.0"],
+            [1609459200000, "29000.0", "29500.0", "28800.0", "29300.0", "1000.0",
+             1609462799999, "29300000.0", 5000, "600.0", "17580000.0"],
         ]
         mock_get.return_value = mock_response
         
@@ -289,7 +293,8 @@ class TestBinanceClientRetry:
         mock_response_ok.status_code = 200
         mock_response_ok.ok = True
         mock_response_ok.json.return_value = [
-            [1609459200000, "29000.0", "29500.0", "28800.0", "29300.0", "1000.0"],
+            [1609459200000, "29000.0", "29500.0", "28800.0", "29300.0", "1000.0",
+             1609462799999, "29300000.0", 5000, "600.0", "17580000.0"],
         ]
         
         # 第一次返回 429，第二次成功
@@ -354,7 +359,8 @@ class TestBinanceClientHistoricalKlines:
         mock_response.status_code = 200
         mock_response.ok = True
         mock_response.json.return_value = [
-            [1609459200000, "29000.0", "29500.0", "28800.0", "29300.0", "1000.0"],
+            [1609459200000, "29000.0", "29500.0", "28800.0", "29300.0", "1000.0",
+             1609545599999, "29300000.0", 5000, "600.0", "17580000.0"],
         ]
         mock_get.return_value = mock_response
         
@@ -378,9 +384,11 @@ class TestBinanceClientHistoricalKlines:
         fixed_now = (batch2_last_ts + 3600000) / 1000.0  # 转换为秒
         mock_time.return_value = fixed_now
         
-        batch1 = [[base_ts + i * 3600000, "29000.0", "29500.0", "28800.0", "29300.0", "1000.0"]
+        batch1 = [[base_ts + i * 3600000, "29000.0", "29500.0", "28800.0", "29300.0", "1000.0",
+                   base_ts + i * 3600000 + 3599999, "29300000.0", 5000, "600.0", "17580000.0"]
                   for i in range(1000)]
-        batch2 = [[base_ts + (1000 + i) * 3600000, "29100.0", "29600.0", "29000.0", "29400.0", "1100.0"]
+        batch2 = [[base_ts + (1000 + i) * 3600000, "29100.0", "29600.0", "29000.0", "29400.0", "1100.0",
+                   base_ts + (1000 + i) * 3600000 + 3599999, "32340000.0", 5500, "660.0", "19536000.0"]
                   for i in range(100)]
         
         mock_response1 = Mock()

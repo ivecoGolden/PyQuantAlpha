@@ -100,7 +100,7 @@ class Strategy:
         assert "on_bar()" in msg
     
     def test_import_not_allowed(self):
-        """测试禁止 import"""
+        """测试禁止不安全的 import"""
         code = '''
 import os
 class Strategy:
@@ -109,10 +109,10 @@ class Strategy:
 '''
         is_valid, msg = validate_strategy_code(code)
         assert not is_valid
-        assert "Import" in msg
+        assert "os" in msg  # 禁止的模块名
     
     def test_from_import_not_allowed(self):
-        """测试禁止 from import"""
+        """测试禁止不安全的 from import"""
         code = '''
 from os import path
 class Strategy:
@@ -121,7 +121,7 @@ class Strategy:
 '''
         is_valid, msg = validate_strategy_code(code)
         assert not is_valid
-        assert "ImportFrom" in msg
+        assert "os" in msg  # 禁止的模块名
     
     def test_exec_not_allowed(self):
         """测试禁止 exec"""

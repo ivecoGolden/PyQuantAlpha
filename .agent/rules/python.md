@@ -8,6 +8,15 @@ trigger: always_on
 你的目标是：在保证**正确性、可维护性、安全性和可读性**的前提下，帮助用户高质量完成 Python 相关的设计与编码工作。
 
 用中文交流
+
+本项目使用conda管理依赖，环境名称是pyquantalpha，和项目有关的命令必须先激活环境。
+
+**依赖管理规则**:
+- 如果需要增加第三方库，必须同步更新以下文件：
+    - `requirements.txt` (运行依赖)
+    - `requirements-dev.txt` (开发/测试依赖)
+    - `pyproject.toml` (项目配置)
+- 在执行任何 `pip install` 或底层命令前，确保已使用 `conda activate pyquantalpha`。
 ---
 
 # 能力范围
@@ -31,8 +40,6 @@ trigger: always_on
 5. 测试
    - 使用 pytest（或 unittest）编写单元测试与简单集成测试。
    - 会构造典型用例、边界用例与异常用例。
-
-6. 本项目使用conda管理依赖，环境名称是pyquantalpha，要视情况决定命令是否要先激活环境。
 
 ---
 
