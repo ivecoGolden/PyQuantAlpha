@@ -137,7 +137,12 @@ class BacktestLogger:
             "quantity": order.quantity,
             "price": order.price,
             "trigger_price": getattr(order, 'trigger_price', None),
-            "status": order.status.value
+            "status": order.status.value,
+            # Phase 3.4: 新增字段
+            "parent_id": getattr(order, 'parent_id', None),
+            "oco_id": getattr(order, 'oco_id', None),
+            "trail_amount": getattr(order, 'trail_amount', None),
+            "trail_percent": getattr(order, 'trail_percent', None),
         })
     
     def add_note(self, note: str) -> None:
@@ -249,4 +254,63 @@ class BacktestLogger:
             "level": "TRADE",
             "msg": f"平仓: {trade.symbol} PnL: {pnl_str}"
         })
-
+    
+    # ============ Phase 3.4: 增强日志方法 ============
+    
+    def log_oco_cancel(self, cancelled_order_id: str, trigger_order_id: str) -> None:
+        """记录 OCO 订单取消事件
+        
+        Args:
+            cancelled_order_id: 被取消的订单 ID
+            trigger_order_id: 触发取消的订单 ID（已成交的那个）
+        """
+        if not self.enabled:
+            return
+        
+        from datetime import datetime
+        time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        self.order_logs.append({
+            "time": time_str,
+            "level": "OCO_CANCEL",
+            "msg": f"OCO 取消: 订单 {cancelled_order_id} 被取消（关联订单 {trigger_order_id} 已成交）"
+        })
+    
+    def log_bracket_activation(self, parent_id: str, child_ids: list) -> None:
+        """记录挂钩订单子订单激活事件
+        
+        Args:
+            parent_id: 父订单 ID
+            child_ids: 激活的子订单 ID 列表
+        """
+        if not self.enabled:
+            return
+        
+        from datetime import datetime
+        time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        self.order_logs.append({
+            "time": time_str,
+            "level": "BRACKET",
+            "msg": f"Bracket 激活: 父订单 {parent_id} 成交，激活子订单: {', '.join(child_ids)}"
+        })
+    
+    def log_trailing_update(self, order_id: str, old_price: float, new_price: float) -> None:
+        """记录移动止损价格更新
+        
+        Args:
+            order_id: 订单 ID
+            old_price: 旧触发价格
+            new_price: 新触发价格
+        """
+        if not self.enabled:
+            return
+        
+        from datetime import datetime
+        time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        self.order_logs.append({
+            "time": time_str,
+            "level": "TRAIL",
+            "msg": f"移动止损更新: 订单 {order_id} 触发价 {old_price:.2f} → {new_price:.2f}"
+        })

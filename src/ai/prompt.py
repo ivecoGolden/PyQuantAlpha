@@ -60,6 +60,14 @@ class Strategy:
 - `self.get_cash()`: 获取账户可用余额。
 - `self.get_equity()`: 获取当前账户总权益（现金 + 持仓市值）。
 
+### 资金配置（可选）
+- `self.set_capital(amount)`: 设置初始资金（在 init() 中调用，可选，默认 $100,000）
+
+```python
+def init(self):
+    self.set_capital(50000)  # 设置初始资金为 5 万美元
+```
+
 ### Sizer 仓位管理 (自动计算下单数量)
 - `self.setsizer(sizer_type, **params)`: 设置仓位计算器
   - `"fixed"`: 固定数量。参数: `stake=1.0`

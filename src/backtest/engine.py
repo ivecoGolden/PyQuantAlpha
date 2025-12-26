@@ -236,6 +236,9 @@ class BacktestEngine:
         self._strategy.buy_bracket = self._api_buy_bracket
         self._strategy.sell_bracket = self._api_sell_bracket
         
+        # Phase 3.4: 资金配置 API
+        self._strategy.set_capital = self._api_set_capital
+        
         # Phase 2.1: 策略回调钩子
         # 如果策略没有定义这些方法，则使用空占位
         if not hasattr(self._strategy, 'notify_order'):
@@ -707,3 +710,36 @@ class BacktestEngine:
         
         logger.debug(f"创建卖出挂钩订单: 主={main_order.id}, 止损={stop_id}, 止盈={limit_id}")
         return (main_order, stop_order, limit_order)
+    
+    # ============ Phase 3.4: 资金配置 API ============
+    
+    def _api_set_capital(self, amount: float) -> None:
+        """设置初始资金
+        
+        必须在 init() 方法中调用，用于覆盖默认的初始资金配置。
+        
+        Args:
+            amount: 初始资金金额，必须大于 0
+            
+        Raises:
+            ValueError: 如果金额无效
+            
+        Example:
+            >>> class Strategy:
+            ...     def init(self):
+            ...         self.set_capital(50000)  # 设置为 5 万
+        """
+        if amount <= 0:
+            raise ValueError(f"初始资金必须大于 0，收到: {amount}")
+        
+        if amount > 1e12:  # 防止溢出
+            raise ValueError(f"初始资金超过上限 (1万亿)，收到: {amount}")
+        
+        # 更新配置
+        self.config.initial_capital = amount
+        
+        # 更新 Broker 的现金和初始资金
+        self._broker._cash = amount
+        self._broker._initial_cash = amount
+        
+        logger.debug(f"设置初始资金: ${amount:,.2f}")

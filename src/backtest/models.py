@@ -17,7 +17,7 @@
 
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 
 class OrderSide(Enum):
@@ -282,10 +282,13 @@ class BacktestResult:
         win_rate: 胜率
         profit_factor: 盈亏比
         total_trades: 总交易数
+        sortino_ratio: 索提诺比率（仅考虑下行风险），可选
+        calmar_ratio: 卡尔玛比率（年化收益/最大回撤），可选
         equity_curve: 净值曲线
         trades: 成交记录列表
         symbols: 策略使用的交易对列表
         logs: 详细日志条目
+        analyzers_detail: 详细分析器输出（可选）
     """
     total_return: float
     annualized_return: float
@@ -294,8 +297,12 @@ class BacktestResult:
     win_rate: float
     profit_factor: float
     total_trades: int
+    # 以下为可选字段（有默认值）
+    sortino_ratio: float = 0.0
+    calmar_ratio: float = 0.0
     equity_curve: List[dict] = field(default_factory=list)
     trades: List[Trade] = field(default_factory=list)
     symbols: List[str] = field(default_factory=list)
     logs: List[BacktestLogEntry] = field(default_factory=list)
+    analyzers_detail: Optional[Dict[str, Any]] = None
 

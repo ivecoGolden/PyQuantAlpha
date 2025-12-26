@@ -67,6 +67,12 @@ class BacktestAnalyzer:
         # 夏普比率
         sharpe_ratio = cls._calc_sharpe_ratio(equities)
         
+        # 索提诺比率（仅考虑下行风险）
+        sortino_ratio = cls._calc_sortino_ratio(equities)
+        
+        # 卡尔玛比率（年化收益/最大回撤）
+        calmar_ratio = annualized_return / max_drawdown if max_drawdown > 0 else float('inf')
+        
         # 交易统计
         win_rate, profit_factor = cls._calc_trade_stats(trades)
         
@@ -75,6 +81,8 @@ class BacktestAnalyzer:
             annualized_return=annualized_return,
             max_drawdown=max_drawdown,
             sharpe_ratio=sharpe_ratio,
+            sortino_ratio=sortino_ratio,
+            calmar_ratio=calmar_ratio,
             win_rate=win_rate,
             profit_factor=profit_factor,
             total_trades=len(trades),
@@ -155,6 +163,46 @@ class BacktestAnalyzer:
         annualized_std = std_return * math.sqrt(cls.TRADING_DAYS_PER_YEAR)
         
         return (annualized_return - cls.RISK_FREE_RATE) / annualized_std
+    
+    @classmethod
+    def _calc_sortino_ratio(cls, equities: List[float]) -> float:
+        """计算索提诺比率
+        
+        与夏普比率类似，但只考虑下行波动率。
+        公式: (年化收益率 - 无风险利率) / 年化下行波动率
+        """
+        if len(equities) < 2:
+            return 0.0
+        
+        # 计算日收益率
+        daily_returns = []
+        for i in range(1, len(equities)):
+            if equities[i - 1] > 0:
+                ret = (equities[i] - equities[i - 1]) / equities[i - 1]
+                daily_returns.append(ret)
+        
+        if not daily_returns:
+            return 0.0
+        
+        # 平均日收益率
+        mean_return = sum(daily_returns) / len(daily_returns)
+        
+        # 下行波动率（只考虑负收益）
+        downside_returns = [r for r in daily_returns if r < 0]
+        if not downside_returns:
+            return float('inf') if mean_return > 0 else 0.0
+        
+        downside_variance = sum(r ** 2 for r in downside_returns) / len(daily_returns)
+        downside_std = math.sqrt(downside_variance)
+        
+        if downside_std == 0:
+            return float('inf') if mean_return > 0 else 0.0
+        
+        # 年化
+        annualized_return = mean_return * cls.TRADING_DAYS_PER_YEAR
+        annualized_downside_std = downside_std * math.sqrt(cls.TRADING_DAYS_PER_YEAR)
+        
+        return (annualized_return - cls.RISK_FREE_RATE) / annualized_downside_std
     
     @classmethod
     def _calc_trade_stats(cls, trades: List[Trade]) -> tuple[float, float]:

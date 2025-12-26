@@ -257,3 +257,73 @@ class Strategy:
         # 验证有交易或有子订单
         has_activity = result.total_trades > 0 or len(engine._broker._pending_child_orders) > 0
         assert has_activity, "Expected trades or pending child orders"
+
+
+class TestSetCapital:
+    """测试 set_capital API"""
+    
+    def test_set_capital_basic(self):
+        """测试基本的资金设置"""
+        code = '''
+class Strategy:
+    def init(self):
+        self.set_capital(50000)
+    
+    def on_bar(self, data):
+        pass
+'''
+        engine = BacktestEngine(BacktestConfig(initial_capital=100000))
+        result = engine.run(code, create_test_bars(10))
+        
+        # 验证资金已更新
+        assert engine.config.initial_capital == 50000
+        assert engine._broker.cash == 50000
+    
+    def test_set_capital_affects_percent_sizer(self):
+        """set_capital 应影响 PercentSize 计算"""
+        code = '''
+class Strategy:
+    def init(self):
+        self.set_capital(10000)  # 1 万
+        self.setsizer("percent", percent=50)  # 50% = 5000
+        self.ordered = False
+    
+    def on_bar(self, data):
+        if not self.ordered:
+            # 使用 Sizer 计算的数量
+            self.order("BTCUSDT", "BUY", 0.05)  # 5000 / 100 = 0.05 @ $100
+            self.ordered = True
+'''
+        engine = BacktestEngine(BacktestConfig(initial_capital=100000, slippage=0))
+        result = engine.run(code, create_test_bars(10))
+        
+        assert engine.config.initial_capital == 10000
+    
+    def test_set_capital_invalid_zero(self):
+        """资金为 0 应抛出异常"""
+        code = '''
+class Strategy:
+    def init(self):
+        self.set_capital(0)
+    
+    def on_bar(self, data):
+        pass
+'''
+        engine = BacktestEngine(BacktestConfig(initial_capital=100000))
+        with pytest.raises(RuntimeError):  # 策略初始化失败
+            engine.run(code, create_test_bars(5))
+    
+    def test_set_capital_invalid_negative(self):
+        """负资金应抛出异常"""
+        code = '''
+class Strategy:
+    def init(self):
+        self.set_capital(-1000)
+    
+    def on_bar(self, data):
+        pass
+'''
+        engine = BacktestEngine(BacktestConfig(initial_capital=100000))
+        with pytest.raises(RuntimeError):
+            engine.run(code, create_test_bars(5))
+
