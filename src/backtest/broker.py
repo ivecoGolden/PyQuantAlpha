@@ -2,18 +2,22 @@
 """
 回测经纪商抽象层
 
-Phase 2.2: 从 Engine 中剥离资金管理和订单撮合逻辑。
+Phase 2.2: 从 Engine 中剥离资金管理和订单撒合逻辑。
+Phase 3.3: 集成 Sizer、滑点模型、手续费模型、移动止损和 OCO 订单。
+
 Broker 负责:
 - 资金管理 (cash, value)
 - 持仓管理 (positions)
 - 订单生命周期管理 (submit, cancel, process)
-- 撮合逻辑 (市价/限价/止损)
+- 撒合逻辑 (市价/限价/止损/移动止损)
+- Sizer 仓位计算
+- 滑点和手续费计算
 
 设计参考: Backtrader 的 BackBroker 类
 """
 
 import logging
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Callable, Any, TYPE_CHECKING
 
 from src.backtest.models import (
     Order, OrderSide, OrderType, OrderStatus,
@@ -21,6 +25,11 @@ from src.backtest.models import (
 )
 from src.data.models import Bar
 from src.messages.errorMessage import ErrorMessage
+from src.backtest.commission import CommissionScheme, CommissionManager
+
+if TYPE_CHECKING:
+    from src.backtest.sizers.base import BaseSizer
+    from src.backtest.slippage.base import BaseSlippage
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +60,17 @@ class BacktestBroker:
         self._orders: List[Order] = []
         self._orders_map: Dict[str, Order] = {}  # O(1) 订单查找
         self._active_orders: List[Order] = []
+        self._pending_child_orders: List[Order] = []  # Phase 3.3: 待激活的子订单
         self._trade_counter = 0
         
         # 回调函数，由 Engine 注入
         self._on_order_callback: Optional[Callable[[Order], None]] = None
         self._on_trade_callback: Optional[Callable[[Trade], None]] = None
+        
+        # Phase 3.3: 新增组件
+        self._sizer: Optional["BaseSizer"] = None
+        self._slippage: Optional["BaseSlippage"] = None
+        self._commission_manager = CommissionManager()
     
     # ============ 属性访问 ============
     
@@ -124,6 +139,62 @@ class BacktestBroker:
         self._on_order_callback = on_order
         self._on_trade_callback = on_trade
     
+    def set_sizer(self, sizer: "BaseSizer") -> "BacktestBroker":
+        """设置默认 Sizer
+        
+        Args:
+            sizer: Sizer 实例
+            
+        Returns:
+            self，支持链式调用
+        """
+        self._sizer = sizer
+        sizer.set_broker(self)
+        return self
+    
+    def set_slippage(self, slippage: "BaseSlippage") -> "BacktestBroker":
+        """设置滑点模型
+        
+        Args:
+            slippage: 滑点模型实例
+            
+        Returns:
+            self，支持链式调用
+        """
+        self._slippage = slippage
+        return self
+    
+    def set_commission(
+        self, 
+        scheme: CommissionScheme, 
+        symbol: str | None = None
+    ) -> "BacktestBroker":
+        """设置手续费方案
+        
+        Args:
+            scheme: 手续费配置
+            symbol: 交易对，None 表示默认方案
+            
+        Returns:
+            self，支持链式调用
+        """
+        self._commission_manager.set_scheme(scheme, symbol)
+        return self
+    
+    def get_size(self, data: Any, isbuy: bool) -> float:
+        """使用 Sizer 计算下单数量
+        
+        Args:
+            data: 数据源
+            isbuy: 买卖方向
+            
+        Returns:
+            计算后的下单数量，无 Sizer 时返回 0
+        """
+        if self._sizer is None:
+            return 0.0
+        return self._sizer.get_size(data, isbuy)
+    
     def submit_order(self, order: Order) -> Order:
         """提交订单
         
@@ -186,6 +257,9 @@ class BacktestBroker:
         trades = []
         orders_to_remove = []
         
+        # Phase 3.3: 先更新所有移动止损订单的止损价
+        self._update_trailing_stops(bar)
+        
         for order in self._active_orders:
             # 匹配交易对
             if symbol and order.symbol != symbol:
@@ -205,6 +279,9 @@ class BacktestBroker:
         for order in orders_to_remove:
             if order in self._active_orders:
                 self._active_orders.remove(order)
+        
+        # Phase 3.3: 激活已成交主订单的子订单
+        self._activate_child_orders()
         
         return trades
     
@@ -312,6 +389,21 @@ class BacktestBroker:
                     if bar.high >= order.price:
                         return max(order.price, bar.open)
         
+        elif order.order_type == OrderType.STOP_TRAIL:
+            # 移动止损单
+            if order.trigger_price is not None:
+                # 检查是否触发止损
+                if order.side == OrderSide.SELL:
+                    # 卖出移动止损：价格跌破止损价时触发
+                    if bar.low <= order.trigger_price:
+                        slippage = self._calculate_slippage(order.trigger_price, order.quantity, is_buy=False)
+                        return order.trigger_price - slippage
+                else:
+                    # 买入移动止损（做空平仓）：价格涨破止损价时触发
+                    if bar.high >= order.trigger_price:
+                        slippage = self._calculate_slippage(order.trigger_price, order.quantity, is_buy=True)
+                        return order.trigger_price + slippage
+        
         return None
     
     def _check_stop_trigger(self, order: Order, bar: Bar) -> bool:
@@ -406,6 +498,9 @@ class BacktestBroker:
         self._notify_order(order)
         self._notify_trade(trade)
         
+        # Phase 3.3: 处理 OCO 订单取消
+        self._process_oco_cancellation(order)
+        
         logger.debug(
             f"成交: {order.symbol} {order.side.value} "
             f"{order.quantity} @ {fill_price:.2f}, PnL: {pnl:.2f}"
@@ -436,7 +531,117 @@ class BacktestBroker:
         self._orders.clear()
         self._orders_map.clear()
         self._active_orders.clear()
+        self._pending_child_orders.clear()
         self._trade_counter = 0
+        self._commission_manager.reset()
+    
+    # ============ Phase 3.3 新增方法 ============
+    
+    def _calculate_slippage(self, price: float, size: float, is_buy: bool) -> float:
+        """计算滑点
+        
+        Args:
+            price: 原始价格
+            size: 下单数量
+            is_buy: 买卖方向
+            
+        Returns:
+            滑点金额（不是滑点后的价格）
+        """
+        if self._slippage is not None:
+            slipped_price = self._slippage.calculate(price, size, is_buy)
+            return abs(slipped_price - price)
+        return price * self._config.slippage
+    
+    def _update_trailing_stops(self, bar: Bar) -> None:
+        """更新所有移动止损订单的止损价
+        
+        Args:
+            bar: 当前 K 线数据
+        """
+        for order in self._active_orders:
+            if order.order_type != OrderType.STOP_TRAIL:
+                continue
+            
+            current_high = bar.high
+            current_low = bar.low
+            
+            if order.side == OrderSide.SELL:
+                # 卖出移动止损（多头保护）：追踪最高价
+                order.highest_price = max(order.highest_price, current_high)
+                
+                # 计算新的止损价
+                if order.trail_amount is not None:
+                    new_stop = order.highest_price - order.trail_amount
+                elif order.trail_percent is not None:
+                    new_stop = order.highest_price * (1 - order.trail_percent)
+                else:
+                    continue
+                
+                # 止损价只能上移，不能下移
+                if order.trigger_price is None or new_stop > order.trigger_price:
+                    order.trigger_price = new_stop
+                    logger.debug(f"移动止损更新: {order.id} 新止损价={new_stop:.2f}")
+            
+            else:
+                # 买入移动止损（空头保护）：追踪最低价
+                order.lowest_price = min(order.lowest_price, current_low)
+                
+                if order.trail_amount is not None:
+                    new_stop = order.lowest_price + order.trail_amount
+                elif order.trail_percent is not None:
+                    new_stop = order.lowest_price * (1 + order.trail_percent)
+                else:
+                    continue
+                
+                # 止损价只能下移，不能上移
+                if order.trigger_price is None or new_stop < order.trigger_price:
+                    order.trigger_price = new_stop
+    
+    def _activate_child_orders(self) -> None:
+        """激活已成交主订单的子订单"""
+        to_activate = []
+        for order in self._pending_child_orders:
+            if order.parent_id:
+                parent = self._orders_map.get(order.parent_id)
+                if parent and parent.status == OrderStatus.FILLED:
+                    to_activate.append(order)
+        
+        for order in to_activate:
+            self._pending_child_orders.remove(order)
+            order.status = OrderStatus.ACCEPTED
+            self._active_orders.append(order)
+            logger.debug(f"子订单已激活: {order.id} (父订单: {order.parent_id})")
+    
+    def _process_oco_cancellation(self, filled_order: Order) -> None:
+        """处理 OCO 订单取消
+        
+        当 OCO 组中任一订单成交时，取消关联订单。
+        
+        Args:
+            filled_order: 已成交的订单
+        """
+        if not filled_order.oco_id:
+            return
+        
+        oco_order = self._orders_map.get(filled_order.oco_id)
+        if oco_order and oco_order in self._active_orders:
+            oco_order.status = OrderStatus.CANCELED
+            oco_order.error_msg = f"OCO: 关联订单 {filled_order.id} 已成交"
+            self._active_orders.remove(oco_order)
+            self._notify_order(oco_order)
+            logger.debug(f"OCO 取消: {oco_order.id} (因 {filled_order.id} 成交)")
+    
+    def add_child_order(self, order: Order) -> None:
+        """添加待激活的子订单
+        
+        Args:
+            order: 子订单（需设置 parent_id）
+        """
+        self._orders.append(order)
+        self._orders_map[order.id] = order
+        self._pending_child_orders.append(order)
+        logger.debug(f"子订单已添加: {order.id} (父订单: {order.parent_id})")
     
     def get_order(self, order_id: str) -> Optional[Order]:
         """根据 ID 获取订单 (O(1))

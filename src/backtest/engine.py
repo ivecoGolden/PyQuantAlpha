@@ -230,6 +230,12 @@ class BacktestEngine:
         self._strategy.get_funding_rates = self._api_get_funding_rates
         self._strategy.get_sentiment = self._api_get_sentiment
         
+        # Phase 3.3: Sizer 和高级订单 API
+        self._strategy.setsizer = self._api_setsizer
+        self._strategy.trailing_stop = self._api_trailing_stop
+        self._strategy.buy_bracket = self._api_buy_bracket
+        self._strategy.sell_bracket = self._api_sell_bracket
+        
         # Phase 2.1: 策略回调钩子
         # 如果策略没有定义这些方法，则使用空占位
         if not hasattr(self._strategy, 'notify_order'):
@@ -489,4 +495,215 @@ class BacktestEngine:
         except Exception as e:
             logger.warning(f"获取市场情绪失败: {e}")
             return []
-
+    
+    # ============ Phase 3.3: Sizer 和高级订单 API ============
+    
+    def _api_setsizer(self, sizer_type: str, **params) -> None:
+        """设置仓位计算器
+        
+        Args:
+            sizer_type: "fixed", "percent", "allin", "risk"
+            **params: 对应参数
+        """
+        from .sizers import FixedSize, PercentSize, AllIn, RiskSize, SizerParams
+        
+        sizer_params = SizerParams(
+            stake=params.get("stake", 1.0),
+            percent=params.get("percent", 20.0),
+            risk_percent=params.get("risk_percent", 2.0),
+            atr_period=params.get("atr_period", 14),
+            atr_multiplier=params.get("atr_multiplier", 2.0)
+        )
+        
+        sizer_map = {
+            "fixed": FixedSize,
+            "percent": PercentSize,
+            "allin": AllIn,
+            "risk": RiskSize
+        }
+        
+        sizer_cls = sizer_map.get(sizer_type.lower(), FixedSize)
+        sizer = sizer_cls(sizer_params)
+        sizer.set_broker(self._broker)
+        
+        # 如果是 RiskSize，尝试注入策略（用于 ATR 访问）
+        if sizer_type.lower() == "risk" and self._strategy:
+            sizer.set_strategy(self._strategy)
+        
+        self._broker.set_sizer(sizer)
+        logger.debug(f"设置 Sizer: {sizer_type}")
+    
+    def _api_trailing_stop(
+        self,
+        symbol: str,
+        size: float = None,
+        trailamount: float = None,
+        trailpercent: float = None
+    ) -> Order:
+        """创建移动止损订单
+        
+        Args:
+            symbol: 交易对
+            size: 数量（可选，默认使用当前持仓）
+            trailamount: 固定金额追踪距离
+            trailpercent: 百分比追踪距离
+            
+        Returns:
+            Order 对象
+        """
+        # 确定数量
+        if size is None:
+            position = self._broker.get_position(symbol)
+            if not position or position.quantity == 0:
+                logger.warning(f"trailing_stop: 无持仓 {symbol}")
+                return None
+            size = abs(position.quantity)
+            side = "SELL" if position.quantity > 0 else "BUY"
+        else:
+            side = "SELL"  # 默认卖出止损
+        
+        order = Order(
+            id=self._generate_order_id(),
+            symbol=symbol,
+            side=OrderSide(side),
+            order_type=OrderType.STOP_TRAIL,
+            quantity=size,
+            trail_amount=trailamount,
+            trail_percent=trailpercent,
+            highest_price=0.0,
+            lowest_price=float('inf'),
+            created_at=self._current_timestamp
+        )
+        
+        self._broker.submit_order(order)
+        self._symbols.add(symbol)
+        logger.debug(f"创建移动止损: {order.id} {symbol}")
+        return order
+    
+    def _api_buy_bracket(
+        self,
+        symbol: str,
+        size: float = None,
+        stopprice: float = None,
+        limitprice: float = None
+    ) -> tuple:
+        """创建买入挂钩订单（主订单 + 止损 + 止盈）
+        
+        Args:
+            symbol: 交易对
+            size: 数量（可选，使用 Sizer 计算）
+            stopprice: 止损价
+            limitprice: 止盈价
+            
+        Returns:
+            (main_order, stop_order, limit_order)
+        """
+        # 使用 Sizer 计算数量
+        if size is None:
+            size = self._broker.get_size(self._current_bar, isbuy=True)
+            if size <= 0:
+                size = 0.1  # 默认值
+        
+        # 主订单（买入）
+        main_order = self._api_order(symbol, "BUY", size)
+        
+        # 生成 OCO ID
+        stop_id = self._generate_order_id()
+        limit_id = self._generate_order_id()
+        
+        # 止损订单（卖出）
+        stop_order = Order(
+            id=stop_id,
+            symbol=symbol,
+            side=OrderSide.SELL,
+            order_type=OrderType.STOP,
+            quantity=size,
+            trigger_price=stopprice,
+            parent_id=main_order.id,
+            oco_id=limit_id,
+            created_at=self._current_timestamp
+        )
+        
+        # 止盈订单（限价卖出）
+        limit_order = Order(
+            id=limit_id,
+            symbol=symbol,
+            side=OrderSide.SELL,
+            order_type=OrderType.LIMIT,
+            quantity=size,
+            price=limitprice,
+            parent_id=main_order.id,
+            oco_id=stop_id,
+            created_at=self._current_timestamp
+        )
+        
+        # 添加为子订单（等主订单成交后激活）
+        self._broker.add_child_order(stop_order)
+        self._broker.add_child_order(limit_order)
+        
+        logger.debug(f"创建买入挂钩订单: 主={main_order.id}, 止损={stop_id}, 止盈={limit_id}")
+        return (main_order, stop_order, limit_order)
+    
+    def _api_sell_bracket(
+        self,
+        symbol: str,
+        size: float = None,
+        stopprice: float = None,
+        limitprice: float = None
+    ) -> tuple:
+        """创建卖出挂钩订单（主订单 + 止损 + 止盈）
+        
+        Args:
+            symbol: 交易对
+            size: 数量
+            stopprice: 止损价（高于入场价）
+            limitprice: 止盈价（低于入场价）
+            
+        Returns:
+            (main_order, stop_order, limit_order)
+        """
+        # 使用 Sizer 计算数量
+        if size is None:
+            size = self._broker.get_size(self._current_bar, isbuy=False)
+            if size <= 0:
+                size = 0.1  # 默认值
+        
+        # 主订单（卖出开空）
+        main_order = self._api_order(symbol, "SELL", size)
+        
+        # 生成 OCO ID
+        stop_id = self._generate_order_id()
+        limit_id = self._generate_order_id()
+        
+        # 止损订单（买入平空）
+        stop_order = Order(
+            id=stop_id,
+            symbol=symbol,
+            side=OrderSide.BUY,
+            order_type=OrderType.STOP,
+            quantity=size,
+            trigger_price=stopprice,
+            parent_id=main_order.id,
+            oco_id=limit_id,
+            created_at=self._current_timestamp
+        )
+        
+        # 止盈订单（限价买入平空）
+        limit_order = Order(
+            id=limit_id,
+            symbol=symbol,
+            side=OrderSide.BUY,
+            order_type=OrderType.LIMIT,
+            quantity=size,
+            price=limitprice,
+            parent_id=main_order.id,
+            oco_id=stop_id,
+            created_at=self._current_timestamp
+        )
+        
+        # 添加为子订单
+        self._broker.add_child_order(stop_order)
+        self._broker.add_child_order(limit_order)
+        
+        logger.debug(f"创建卖出挂钩订单: 主={main_order.id}, 止损={stop_id}, 止盈={limit_id}")
+        return (main_order, stop_order, limit_order)

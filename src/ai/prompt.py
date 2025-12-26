@@ -50,6 +50,8 @@ class Strategy:
 - `SentimentDisparity(period)`: 价格与多空比的背离度。`val = self.sd.update(price, ls_ratio)`
 
 ## 3. 交易 API (self 方法)
+
+### 基础交易
 - `self.order(symbol, side, quantity, price=None, exectype="MARKET", trigger=None)`
   - `side`: "BUY" (开多/平空), "SELL" (开空/平多)
   - `exectype`: "MARKET", "LIMIT" (需 price), "STOP" (需 trigger), "STOP_LIMIT" (需 price+trigger)
@@ -57,6 +59,27 @@ class Strategy:
 - `self.get_position(symbol)`: 返回 `Position` 对象或 `None`（属性: `quantity`, `avg_price`）。
 - `self.get_cash()`: 获取账户可用余额。
 - `self.get_equity()`: 获取当前账户总权益（现金 + 持仓市值）。
+
+### Sizer 仓位管理 (自动计算下单数量)
+- `self.setsizer(sizer_type, **params)`: 设置仓位计算器
+  - `"fixed"`: 固定数量。参数: `stake=1.0`
+  - `"percent"`: 按资金百分比。参数: `percent=20`（使用 20% 资金）
+  - `"allin"`: 全仓
+  - `"risk"`: 基于 ATR 风险。参数: `risk_percent=2`（单次最大亏损 2%）, `atr_multiplier=2`
+
+```python
+def init(self):
+    self.atr = ATR(14)
+    self.setsizer("risk", risk_percent=2, atr_multiplier=2)  # 每次风险 2%
+```
+
+### 高级订单
+- `self.trailing_stop(symbol, size=None, trailamount=None, trailpercent=None)`: 移动止损
+  - `trailamount`: 固定金额追踪距离（价格回撤该金额触发）
+  - `trailpercent`: 百分比追踪距离（如 0.05 = 5%）
+- `self.buy_bracket(symbol, size=None, stopprice=None, limitprice=None)`: 买入挂钩订单
+  - 自动创建主订单 + 止损单 + 止盈单，OCO（一个成交自动取消另一个）
+- `self.sell_bracket(symbol, size=None, stopprice=None, limitprice=None)`: 卖出挂钩订单
 
 ### 交易示例
 ```python
@@ -71,6 +94,14 @@ self.order("BTCUSDT", "SELL", 0.1, exectype="STOP", trigger=58000)
 
 # 4. 全部平仓
 self.close("BTCUSDT")
+
+# 5. 移动止损（3% 追踪）
+pos = self.get_position("BTCUSDT")
+if pos and pos.quantity > 0:
+    self.trailing_stop("BTCUSDT", size=pos.quantity, trailpercent=0.03)
+
+# 6. 挂钩订单（入场 + 止损 + 止盈）
+self.buy_bracket("BTCUSDT", size=0.1, stopprice=58000, limitprice=65000)
 ```
 
 ## 4. 策略钩子 (回调方法)

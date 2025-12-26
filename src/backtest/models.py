@@ -3,7 +3,7 @@
 回测数据模型
 
 核心模型：
-- Order: 订单（市价/限价/止损/止损限价）
+- Order: 订单（市价/限价/止损/止损限价/移动止损）
 - Trade: 成交记录
 - Position: 持仓（支持多/空）
 - BacktestConfig: 回测配置
@@ -11,7 +11,7 @@
 
 枚举类型：
 - OrderSide: BUY / SELL
-- OrderType: MARKET / LIMIT / STOP / STOP_LIMIT
+- OrderType: MARKET / LIMIT / STOP / STOP_LIMIT / STOP_TRAIL
 - OrderStatus: CREATED / SUBMITTED / ACCEPTED / PARTIAL / FILLED / CANCELED / REJECTED / EXPIRED
 """
 
@@ -47,11 +47,13 @@ class OrderType(Enum):
     """订单类型
     
     Phase 2.2 新增 STOP 和 STOP_LIMIT 类型用于止损/止盈策略
+    Phase 3.3 新增 STOP_TRAIL 移动止损类型
     """
     MARKET = "MARKET"          # 市价单
     LIMIT = "LIMIT"            # 限价单
     STOP = "STOP"              # 止损单 (触价即市价)
     STOP_LIMIT = "STOP_LIMIT"  # 止损限价单 (触价即限价)
+    STOP_TRAIL = "STOP_TRAIL"  # 移动止损单 (追踪止损)
 
 
 @dataclass
@@ -65,12 +67,22 @@ class Order:
         order_type: 订单类型
         quantity: 数量
         price: 限价单价格（市价单为 None）
+        trigger_price: 触发价格 (STOP/STOP_LIMIT/STOP_TRAIL)
         created_at: 创建时间戳
         status: 订单状态
         filled_avg_price: 成交均价
         filled_quantity: 成交数量
         fee: 手续费
         error_msg: 错误信息
+        triggered: STOP 单是否已触发
+        
+        # Phase 3.3 新增
+        parent_id: 父订单 ID（用于 Bracket Order）
+        oco_id: OCO 关联订单 ID（One-Cancels-Other）
+        trail_amount: 移动止损的固定金额距离
+        trail_percent: 移动止损的百分比距离
+        highest_price: 追踪期间的最高价（用于卖出时的移动止损）
+        lowest_price: 追踪期间的最低价（用于买入时的移动止损）
     """
     id: str
     symbol: str
@@ -86,6 +98,13 @@ class Order:
     fee: float = 0.0
     error_msg: str = ""
     triggered: bool = False  # STOP 单是否已触发
+    # Phase 3.3 新增：挂钩订单和移动止损
+    parent_id: Optional[str] = None       # 父订单 ID
+    oco_id: Optional[str] = None          # OCO 关联订单 ID
+    trail_amount: Optional[float] = None  # 移动止损固定金额
+    trail_percent: Optional[float] = None # 移动止损百分比
+    highest_price: float = 0.0            # 追踪期间最高价
+    lowest_price: float = float('inf')    # 追踪期间最低价
 
 
 @dataclass
