@@ -451,12 +451,15 @@ class MarketDataRepository:
             if need_sync:
                 try:
                     futures_client = BinanceFuturesClient()
+                    # 注意：API 不支持 startTime/endTime，只能通过 limit 获取最近数据
+                    # 根据请求的时间范围估算需要的 limit
+                    time_range_hours = (end_time - start_time) // (3600 * 1000)
+                    limit = min(max(time_range_hours, 24), 500)  # 至少 24 条，最多 500 条
+                    
                     fetched = futures_client.get_long_short_ratio(
                         symbol=symbol,
                         period=period,
-                        start_time=start_time,
-                        end_time=end_time,
-                        limit=500
+                        limit=limit
                     )
                     
                     # 3. 写入数据库

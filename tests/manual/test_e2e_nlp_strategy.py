@@ -28,7 +28,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def test_e2e_nlp_strategy():
+def test_e2e_nlp_strategy() -> None:
     """端到端测试：自然语言 -> 策略代码 -> 回测"""
     
     print("=" * 60)
@@ -53,7 +53,7 @@ def test_e2e_nlp_strategy():
     else:
         print("❌ 错误：未找到 API Key")
         print("   请设置 DEEPSEEK_API_KEY 或 OPENAI_API_KEY 环境变量")
-        return False
+        return
     
     print(f"   使用 LLM Provider: {provider.value}")
     
@@ -62,7 +62,7 @@ def test_e2e_nlp_strategy():
         print("   ✅ LLM 客户端初始化成功")
     except Exception as e:
         print(f"   ❌ LLM 客户端初始化失败: {e}")
-        return False
+        return
     
     # 2. 发送自然语言请求
     print("\n📝 Step 2: 发送自然语言请求...")
@@ -78,7 +78,7 @@ def test_e2e_nlp_strategy():
         print(f"   响应类型: {response.type}")
     except Exception as e:
         print(f"   ❌ LLM 请求失败: {e}")
-        return False
+        return
     
     # 3. 验证策略代码
     print("\n📝 Step 3: 验证策略代码...")
@@ -86,7 +86,7 @@ def test_e2e_nlp_strategy():
     if response.type != "strategy" or not response.code:
         print(f"   ❌ 未返回策略代码，响应类型: {response.type}")
         print(f"   内容: {response.content[:200]}...")
-        return False
+        return
     
     strategy_code = response.code
     print(f"   策略代码长度: {len(strategy_code)} 字符")
@@ -106,7 +106,7 @@ def test_e2e_nlp_strategy():
         print("   ✅ 策略代码验证通过")
     else:
         print(f"   ❌ 策略代码验证失败: {error_msg}")
-        return False
+        return
     
     # 4. 获取市场数据
     print("\n📝 Step 4: 获取市场数据...")
@@ -121,7 +121,7 @@ def test_e2e_nlp_strategy():
         print(f"   ✅ 获取 {symbol} 数据成功: {len(bars)} 根 K 线")
     except Exception as e:
         print(f"   ❌ 获取数据失败: {e}")
-        return False
+        return
     
     if len(bars) < 100:
         print(f"   ⚠️ 数据量不足，使用 get_klines 获取")
@@ -149,7 +149,7 @@ def test_e2e_nlp_strategy():
         print(f"   ❌ 回测失败: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        return
     
     # 6. 输出绩效
     print("\n📊 Step 6: 回测绩效报告")
@@ -171,10 +171,8 @@ def test_e2e_nlp_strategy():
             print(f"   {trade.symbol} {trade.side.value} {trade.quantity:.4f} @ {trade.price:.2f} | PnL: {pnl_str}")
     
     print("\n✅ 端到端测试完成！")
-    return True
 
 
 if __name__ == "__main__":
-    success = test_e2e_nlp_strategy()
-    sys.exit(0 if success else 1)
+    test_e2e_nlp_strategy()
 

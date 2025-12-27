@@ -165,17 +165,16 @@ class BinanceFuturesClient:
         self,
         symbol: str,
         period: str = "1h",
-        start_time: Optional[int] = None,
-        end_time: Optional[int] = None,
         limit: int = 30
     ) -> List[SentimentData]:
         """获取全局多空账户比
         
+        注意：Binance Futures API 的 globalLongShortAccountRatio 端点
+        不支持 startTime/endTime 参数，只能通过 limit 获取最近 N 条数据。
+        
         Args:
             symbol: 交易对，如 "BTCUSDT"
             period: 统计周期，可选 "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"
-            start_time: 开始时间戳（毫秒）
-            end_time: 结束时间戳（毫秒）
             limit: 返回数量，最大 500
             
         Returns:
@@ -191,10 +190,7 @@ class BinanceFuturesClient:
             "period": period,
             "limit": min(limit, 500)
         }
-        if start_time:
-            params["startTime"] = start_time
-        if end_time:
-            params["endTime"] = end_time
+        # 注意：不传递 startTime/endTime，该 API 不支持这些参数
         
         try:
             data = self._request("/futures/data/globalLongShortAccountRatio", params)

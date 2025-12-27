@@ -69,6 +69,10 @@ class BacktestRequest(BaseModel):
     symbol: str = Field("BTCUSDT", description="交易对 (多资产用逗号分隔)")
     interval: str = Field("1h", description="时间周期")
     days: int = Field(30, description="回测天数")
+    # Phase 3.5: 高级配置参数
+    initial_capital: float = Field(100000.0, ge=1000, le=1e12, description="初始资金")
+    commission_rate: float = Field(0.001, ge=0, le=0.1, description="手续费率")
+    slippage: float = Field(0.0005, ge=0, le=0.1, description="滑点")
 
 class BacktestStartResponse(BaseModel):
     task_id: str = Field(..., description="任务ID")
@@ -221,8 +225,13 @@ async def run_backtest(
     if not klines:
         raise HTTPException(status_code=400, detail=ErrorMessage.BACKTEST_DATA_EMPTY)
 
-    # 4. 启动任务
-    task_id = await _backtest_manager.start_backtest(req.code, klines)
+    # 4. 构建配置并启动任务
+    config = {
+        "initial_capital": req.initial_capital,
+        "commission_rate": req.commission_rate,
+        "slippage": req.slippage,
+    }
+    task_id = await _backtest_manager.start_backtest(req.code, klines, config)
     
     return BacktestStartResponse(
         task_id=task_id,

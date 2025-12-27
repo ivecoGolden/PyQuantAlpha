@@ -114,6 +114,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let eventSource = null;
 
+    // Phase 3.5: 高级选项折叠切换
+    const toggleAdvancedBtn = document.getElementById('toggle-advanced-btn');
+    const advancedOptions = document.getElementById('advanced-options');
+    const advancedArrow = document.getElementById('advanced-arrow');
+
+    if (toggleAdvancedBtn && advancedOptions) {
+        toggleAdvancedBtn.addEventListener('click', () => {
+            advancedOptions.classList.toggle('hidden');
+            if (advancedArrow) {
+                advancedArrow.style.transform = advancedOptions.classList.contains('hidden')
+                    ? 'rotate(0deg)'
+                    : 'rotate(180deg)';
+            }
+        });
+    }
+
     runBtn.addEventListener('click', async () => {
         if (!currentCode) {
             alert("请先生成或输入策略代码");
@@ -131,6 +147,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const interval = document.getElementById('bt-interval').value;
         const days = document.getElementById('bt-days').value;
 
+        // Phase 3.5: 读取高级配置
+        const capitalInput = document.getElementById('bt-capital');
+        const commissionInput = document.getElementById('bt-commission');
+        const slippageInput = document.getElementById('bt-slippage');
+
+        const config = {
+            initial_capital: capitalInput ? parseFloat(capitalInput.value) : 100000,
+            commission_rate: commissionInput ? parseFloat(commissionInput.value) / 100 : 0.001,
+            slippage: slippageInput ? parseFloat(slippageInput.value) / 100 : 0.0005
+        };
+
         try {
             // UI Reset
             runBtn.disabled = true;
@@ -139,8 +166,8 @@ document.addEventListener('DOMContentLoaded', () => {
             UI.resetChart();
             UI.updateProgress(0);
 
-            // 1. Start Task
-            const { task_id } = await API.runBacktest(currentCode, symbol, interval, days);
+            // 1. Start Task (传递配置)
+            const { task_id } = await API.runBacktest(currentCode, symbol, interval, days, config);
 
             // 2. Connect SSE
             if (eventSource) eventSource.close();

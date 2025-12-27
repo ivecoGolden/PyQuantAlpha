@@ -36,17 +36,24 @@ const API = {
      * @param {string} symbol 交易对
      * @param {string} interval 周期
      * @param {number} days 天数
+     * @param {object} config 高级配置 {initial_capital, commission_rate, slippage}
      */
-    async runBacktest(code, symbol, interval, days) {
+    async runBacktest(code, symbol, interval, days, config = {}) {
+        const body = {
+            code,
+            symbol,
+            interval,
+            days: parseInt(days),
+            // 高级配置（后端会验证并使用默认值）
+            initial_capital: config.initial_capital || 100000,
+            commission_rate: config.commission_rate || 0.001,
+            slippage: config.slippage || 0.0005
+        };
+
         const res = await fetch('/api/backtest/run', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                code,
-                symbol,
-                interval,
-                days: parseInt(days)
-            })
+            body: JSON.stringify(body)
         });
 
         if (!res.ok) {

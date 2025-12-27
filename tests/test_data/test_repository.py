@@ -299,3 +299,55 @@ class TestBatchFetching:
             # 标记为不完整
             assert is_complete is False
 
+
+class TestGetSentiment:
+    """测试市场情绪数据获取"""
+    
+    @pytest.fixture
+    def mock_futures_client(self):
+        """创建 mock Futures 客户端"""
+        from src.data.binance_futures import SentimentData
+        return [
+            SentimentData(
+                symbol="BTCUSDT",
+                timestamp=1700000000000,
+                long_short_ratio=1.25,
+                long_account_ratio=0.556,
+                short_account_ratio=0.444
+            )
+        ]
+    
+    @pytest.mark.asyncio
+    async def test_get_sentiment_uses_limit_not_time(self, mock_futures_client):
+        """测试 get_sentiment 使用 limit 而非 startTime/endTime
+        
+        由于 Binance API 不支持时间参数，repository 会根据时间范围估算 limit
+        """
+        from unittest.mock import patch
+        from src.data.repository import MarketDataRepository
+        from src.database import init_db
+        
+        await init_db()
+        repo = MarketDataRepository()
+        
+        # Mock BinanceFuturesClient.get_long_short_ratio
+        # 注意：BinanceFuturesClient 是在 get_sentiment 方法内部动态导入的
+        with patch("src.data.binance_futures.BinanceFuturesClient") as MockFuturesClient:
+            mock_instance = MockFuturesClient.return_value
+            mock_instance.get_long_short_ratio.return_value = mock_futures_client
+            
+            # 请求 2 天的数据 (48 小时)
+            end_time = 1700100000000
+            start_time = end_time - 2 * 24 * 3600 * 1000  # 2 天
+            
+            await repo.get_sentiment("BTCUSDT", start_time, end_time, "1h")
+            
+            # 验证调用时 limit 被正确计算
+            call_args = mock_instance.get_long_short_ratio.call_args
+            if call_args:
+                kwargs = call_args.kwargs or {}
+                # limit 应该基于时间范围计算：48 小时
+                assert kwargs.get("limit", 24) >= 24
+                # 不应传递 startTime/endTime
+                assert "start_time" not in kwargs
+                assert "end_time" not in kwargs

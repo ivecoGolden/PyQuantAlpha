@@ -1,0 +1,54 @@
+class Strategy:
+    def init(self):
+        # 初始化指标
+        self.rsi = RSI(14)
+        # 设置初始资金为 10 万美元
+        self.set_capital(100000)
+        # 使用百分比仓位管理，每次 10%
+        self.setsizer("percent", percent=10)
+        # 获取资金费率数据（避免在 on_bar 中频繁调用）
+        self.funding_data = self.get_funding_rates("BTCUSDT", days=7)
+        self.last_funding_rate = self.funding_data[-1].funding_rate if self.funding_data else 0
+        # 设置恐慌和贪婪阈值
+        self.panic_threshold = -0.0005  # 负值表示恐慌
+        self.greed_threshold = 0.0005   # 正值表示贪婪
+        
+    def on_bar(self, data):
+        # 获取当前 Bar 数据（单资产模式）
+        bar = data
+        if not bar:
+            return
+        
+        # 更新 RSI 指标
+        rsi_val = self.rsi.update(bar.close)
+        if rsi_val is None:
+            return
+        
+        # 获取当前持仓
+        position = self.get_position("BTCUSDT")
+        
+        # 交易逻辑：基于资金费率和 RSI
+        if self.last_funding_rate < self.panic_threshold and rsi_val < 70:
+            # 市场恐慌且 RSI 未超买，买入开多
+            if not position or position.quantity <= 0:
+                self.order("BTCUSDT", "BUY", 0.1)  # 数量由 sizer 自动计算
+        elif self.last_funding_rate > self.greed_threshold and rsi_val > 30:
+            # 市场贪婪且 RSI 未超卖，卖出开空
+            if not position or position.quantity >= 0:
+                self.order("BTCUSDT", "SELL", 0.1)  # 数量由 sizer 自动计算
+        else:
+            # 如果资金费率在阈值内，考虑平仓
+            if position and position.quantity > 0 and self.last_funding_rate > self.panic_threshold:
+                self.close("BTCUSDT")
+            elif position and position.quantity < 0 and self.last_funding_rate < self.greed_threshold:
+                self.close("BTCUSDT")
+    
+    def notify_order(self, order):
+        # 可选：订单状态通知
+        if order.status == "FILLED":
+            print(f"订单成交: {order.id} - {order.symbol} {order.side} {order.quantity} @ {order.price}")
+    
+    def notify_trade(self, trade):
+        # 可选：交易平仓通知
+        if trade.pnl != 0:
+            print(f"交易平仓: {trade.symbol} 盈亏: {trade.pnl}")

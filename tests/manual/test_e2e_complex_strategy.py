@@ -132,7 +132,7 @@ class MarkdownReportGenerator:
             f.write(self.generate())
 
 
-def test_e2e_complex_strategy() -> str:
+def test_e2e_complex_strategy() -> None:
     """端到端测试：生成 Markdown 报告"""
     
     report = MarkdownReportGenerator()
@@ -162,13 +162,15 @@ def test_e2e_complex_strategy() -> str:
         api_key = openai_key
     else:
         report.add_section("❌ 错误", "未找到 API Key，请设置 DEEPSEEK_API_KEY 或 OPENAI_API_KEY")
-        return report.generate()
+        print(report.generate())
+        return
     
     try:
         client = create_llm_client(provider, api_key)
     except Exception as e:
         report.add_section("❌ 错误", f"LLM 客户端初始化失败: {e}")
-        return report.generate()
+        print(report.generate())
+        return
     
     report.end_timing("LLM 初始化")
     
@@ -181,13 +183,15 @@ def test_e2e_complex_strategy() -> str:
         response = client.unified_chat(COMPLEX_STRATEGY_PROMPT)
     except Exception as e:
         report.add_section("❌ 错误", f"LLM 请求失败: {e}")
-        return report.generate()
+        print(report.generate())
+        return
     
     report.end_timing("LLM 策略生成")
     
     if response.type != "strategy" or not response.code:
         report.add_section("❌ 错误", f"未返回策略代码，响应类型: {response.type}")
-        return report.generate()
+        print(report.generate())
+        return
     
     strategy_code = response.code
     
@@ -215,7 +219,8 @@ def test_e2e_complex_strategy() -> str:
     
     if not is_valid:
         report.add_section("❌ 代码验证失败", error_msg)
-        return report.generate()
+        print(report.generate())
+        return
     
     report.add_section("代码验证", "✅ 验证通过", level=3)
     
@@ -236,7 +241,8 @@ def test_e2e_complex_strategy() -> str:
             bars = binance.get_klines(symbol, "1h", limit=1000)
         except Exception as e2:
             report.add_section("❌ 错误", f"获取数据失败: {e2}")
-            return report.generate()
+            print(report.generate())
+            return
     
     report.end_timing("获取市场数据")
     
@@ -273,7 +279,8 @@ def test_e2e_complex_strategy() -> str:
         report.add_section("❌ 回测失败", str(e))
         import traceback
         report.add_code_block(traceback.format_exc(), "")
-        return report.generate()
+        print(report.generate())
+        return
     
     report.end_timing("回测执行")
     
@@ -432,8 +439,6 @@ def test_e2e_complex_strategy() -> str:
     print(f"\n📄 报告已保存到: {report_file}")
     print("\n" + "=" * 70)
     print(report_content)
-    
-    return report_content
 
 
 if __name__ == "__main__":

@@ -130,3 +130,32 @@ class TestBinanceFuturesClient:
         
         rates = client.get_funding_rate_history("BTCUSDT", limit=10)
         assert rates == []
+    
+    @patch("src.data.binance_futures.requests.get")
+    def test_get_long_short_ratio_no_time_params(self, mock_get, client):
+        """测试 get_long_short_ratio 不传递 startTime/endTime 参数
+        
+        Binance API 的 globalLongShortAccountRatio 端点不支持这些参数
+        """
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [
+            {
+                "symbol": "BTCUSDT",
+                "timestamp": 1700000000000,
+                "longShortRatio": "1.5000",
+                "longAccount": "0.6000",
+                "shortAccount": "0.4000"
+            }
+        ]
+        mock_get.return_value = mock_response
+        
+        client.get_long_short_ratio("BTCUSDT", "4h", limit=24)
+        
+        # 验证调用参数不包含 startTime/endTime
+        call_args = mock_get.call_args
+        params = call_args.kwargs.get("params", {}) or call_args[1].get("params", {})
+        assert "startTime" not in params
+        assert "endTime" not in params
+        assert params.get("limit") == 24
+        assert params.get("period") == "4h"

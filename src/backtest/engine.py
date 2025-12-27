@@ -456,11 +456,6 @@ class BacktestEngine:
         
         try:
             # 同步包装异步方法
-            return asyncio.get_event_loop().run_until_complete(
-                self._market_repo.get_funding_rates(symbol, start_time, end_time)
-            )
-        except RuntimeError:
-            # 如果没有事件循环，创建一个新的
             return asyncio.run(
                 self._market_repo.get_funding_rates(symbol, start_time, end_time)
             )
@@ -487,11 +482,6 @@ class BacktestEngine:
         
         try:
             # 同步包装异步方法
-            return asyncio.get_event_loop().run_until_complete(
-                self._market_repo.get_sentiment(symbol, start_time, end_time, period)
-            )
-        except RuntimeError:
-            # 如果没有事件循环，创建一个新的
             return asyncio.run(
                 self._market_repo.get_sentiment(symbol, start_time, end_time, period)
             )
